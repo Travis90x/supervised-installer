@@ -5,9 +5,9 @@ function warn  { echo -e "\e[33m[warn] $*\e[39m"; }
 function error { echo -e "\e[31m[error] $*\e[39m"; exit 1; }
 
 warn ""
-warn "If you want more control over your own system, run"
-warn "Home Assistant as a VM or run Home Assistant Core"
-warn "via a Docker container."
+warn "Installation of Home Assistant Supervised by Travis90x"
+warn "you can try to install on every platform"
+warn "like Armbian on TV box."
 warn ""
 
 # Check if we are running on a supported OS
@@ -17,17 +17,17 @@ if [[ $CURRENT_OS != *"Debian GNU/Linux 11 (bullseye)"* ]]; then
 # Strip first feild of string
     CURRENT_OS=$(echo $CURRENT_OS | cut -d' ' -f2-)
     if [[ $BYPASS_OS_CHECK != "true" ]]; then
-        error "${CURRENT_OS} is not supported!"
+        warn "${CURRENT_OS} is not supported, but the installation run anyway!"
     fi
     warn "Bypassing OS check..."
-    warn "${CURRENT_OS} is not supported!"
-    warn "Please DO NOT report issues regarding this OS!"
+    warn "${CURRENT_OS} is not officially supported!"
+    warn "Please DO NOT report issues regarding this OS on official repo!"
 fi
 
 # Check if we are running on a supported architecture
 ARCH=$(uname -m)
 if [[ ! "i386|i686|x86_64|arm|armv6l|armv7l|aarch64" == *"$ARCH"* ]]; then
-    error "${ARCH} is not supported!"
+    warn "${ARCH} is not supported!"
 fi
 
 # Check if Modem Manager is enabled
