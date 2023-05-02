@@ -1,3 +1,5 @@
+![HASSIO_TVBOX](https://travis90x.altervista.org/wp-content/uploads/2023/03/TVBOX-Home-Assistant-Armbian-e1678439993545-800x445.jpg)
+
 # Install Home Assistant Supervised with no Architecture Check (no exit on errors)
 This installation method is for advanced users only, use at your own risk!
 
