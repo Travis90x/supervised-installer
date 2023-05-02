@@ -101,7 +101,7 @@ case ${ARCH} in
         HASSIO_DOCKER="${DOCKER_REPO}/aarch64-hassio-supervisor"
     ;;
     *)
-        error "${ARCH} unknown!"
+        warn "${ARCH} unknown!"
     ;;
 esac
 PREFIX=${PREFIX:-/usr}
@@ -153,7 +153,7 @@ chmod a+x "${PREFIX}/bin/ha"
 if [ -f /etc/default/grub ]
 then
     if ! grep -q "systemd.unified_cgroup_hierarchy=false" /etc/default/grub; then
-        info "Switching to cgroup v1"
+        info "Switching to cgroup v1 in /etc/default/grub"
         cp /etc/default/grub /etc/default/grub.bak
         sed -i 's/^GRUB_CMDLINE_LINUX_DEFAULT="/&systemd.unified_cgroup_hierarchy=false /' /etc/default/grub
         update-grub
@@ -162,12 +162,31 @@ then
 elif [ -f /boot/firmware/cmdline.txt ]
 then
     if ! grep -q "systemd.unified_cgroup_hierarchy=false" /boot/firmware/cmdline.txt; then
-        info "Switching to cgroup v1"
+        info "Switching to cgroup v1 in /boot/firmware/cmdline.txt"
         sed -i.bak 's/$/ systemd.unified_cgroup_hierarchy=false/' /boot/firmware/cmdline.txt
         touch /var/run/reboot-required
     fi
+elif [ -f /boot/uEnv.txt ]
+then
+    if ! grep -q "systemd.unified_cgroup_hierarchy=false" /boot/uEnv.txt; then
+        info "To switch to cgroup v1 in /boot/uEnv.txt"
+        warn " add 'systemd.unified_cgroup_hierarchy=false' to /boot/uEnv.txt "
+        warn "and 'sudo update-initramfs -u'"
+        touch /var/run/reboot-required
+    fi
+elif [ -f /boot/boot.cmd ]
+then
+    if ! grep -q "systemd.unified_cgroup_hierarchy=false" /boot/boot.cmd; then
+        info "To switch to cgroup v1 in /boot/boot.cmd"
+        warn "add 'systemd.unified_cgroup_hierarchy=false' to /boot/boot.cmd "
+        warn "in the row with 'setenv bootargs' "
+        warn "and then: sudo mkimage -C none -A arm -T script -d /boot/boot.cmd /boot/boot.scr "
+        touch /var/run/reboot-required
+    fi
 else
-    warn "Could not find /etc/default/grub or /boot/firmware/cmdline.txt failed to switch to cgroup v1"
+    warn "Could not find /etc/default/grub or /boot/firmware/cmdline.txt"
+    warn "or /boot/armbianEnv.txt or /boot/uEnv.txt"
+    warn " failed to switch to cgroup v1"
 fi
 info "Within a few minutes you will be able to reach Home Assistant at:"
 info "http://homeassistant.local:8123 or using the IP address of your"
