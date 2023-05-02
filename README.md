@@ -4,6 +4,8 @@
 
 Instructions for installing Home Assistant Supervised on TV box can be found [here](https://travis90x.altervista.org/home-assistant-supervised-on-armbian-tvbox/)
 
+## Tested on TV Box X96 Mini (SoC ARM Rockchip rk322x armv7l) 
+## with Armbinan 23 bookworn (Debian 12) using qemuarm.
 
 ## Install the Home Assistant Supervised Debian Package:
 
