@@ -1,49 +1,12 @@
 # This installation method is for advanced users only
-
-## Make sure you understand [the requirements](https://github.com/home-assistant/architecture/blob/master/adr/0014-home-assistant-supervised.md)
-
 # Install Home Assistant Supervised
+Instructions for installing Home Assistant Supervised on TV box can be found [here](https://travis90x.altervista.org/home-assistant-supervised-on-armbian-tvbox/)
 
-This installation method provides the full Home Assistant experience on a regular operating system. This means, all components from the Home Assistant method are used, except for the Home Assistant Operating System. This system will run the Home Assistant Supervisor. The Supervisor is not just an application, it is a full appliance that manages the whole system. It will clean up, repair or reset settings to default if they no longer match expected values.
 
-By not using the Home Assistant Operating System, the user is responsible for making sure that all required components are installed and maintained. Required components and their versions will change over time. Home Assistant Supervised is provided as-is as a foundation for community supported do-it-yourself solutions. We only accept bug reports for issues that have been reproduced on a freshly installed, fully updated Debian with no additional packages.
-
-This method is considered advanced and should only be used if one is an expert in managing a Linux operating system, Docker and networking.
-
-## Installation
-
-Run the following commands as root (`su -` or `sudo su -` on machines with sudo installed):
-
-Step 1: Install the following dependencies with this command:
+## Install the Home Assistant Supervised Debian Package:
 
 ```bash
-sudo apt install \
-apparmor \
-jq \
-wget \
-curl \
-udisks2 \
-libglib2.0-bin \
-network-manager \
-dbus \
-lsb-release \
-systemd-journal-remote -y
-```
-
-Step 2: Install Docker-CE with the following command:
-
-```bash
-curl -fsSL get.docker.com | sh
-```
-
-Step 3: Install the OS-Agent:
-
-Instructions for installing the OS-Agent can be found [here](https://github.com/home-assistant/os-agent/tree/main#using-home-assistant-supervised-on-debian)
-
-Step 4: Install the Home Assistant Supervised Debian Package:
-
-```bash
-wget https://github.com/home-assistant/supervised-installer/releases/latest/download/homeassistant-supervised.deb
+wget https://github.com/Travis90x/supervised-installer/releases/latest/download/homeassistant-supervised.deb
 apt install ./homeassistant-supervised.deb
 ```
 
