@@ -1,13 +1,11 @@
-# Install Home Assistant Supervised 
-# with no Architecture Check (no exit on errors)
-## This installation method is for advanced users only, use at your own risk!
+# Install Home Assistant Supervised with no Architecture Check (no exit on errors)
+This installation method is for advanced users only, use at your own risk!
 
 Instructions for installing Home Assistant Supervised on TV box can be found [here](https://travis90x.altervista.org/home-assistant-supervised-on-armbian-tvbox/)
 
-## Tested on TV Box X96 Mini (SoC ARM Rockchip rk322x armv7l) 
-## with Armbinan 23 bookworn (Debian 12) using qemuarm.
+### Tested on TV Box X96 Mini (SoC ARM Rockchip rk322x armv7l) with Armbinan 23 bookworn (Debian 12) using qemuarm.
 
-## Install the Home Assistant Supervised Debian Package:
+#### Install the Home Assistant Supervised Debian Package:
 
 ```bash
 wget https://github.com/Travis90x/supervised-installer/releases/latest/download/homeassistant-supervised.deb
