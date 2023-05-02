@@ -17,7 +17,7 @@ Run the following commands as root (`su -` or `sudo su -` on machines with sudo 
 Step 1: Install the following dependencies with this command:
 
 ```bash
-apt install \
+sudo apt install \
 apparmor \
 jq \
 wget \
