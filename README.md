@@ -1,4 +1,5 @@
-# Install Home Assistant Supervised with no Architecture Check (no exit on errors)
+# Install Home Assistant Supervised 
+# with no Architecture Check (no exit on errors)
 ## This installation method is for advanced users only, use at your own risk!
 
 Instructions for installing Home Assistant Supervised on TV box can be found [here](https://travis90x.altervista.org/home-assistant-supervised-on-armbian-tvbox/)
