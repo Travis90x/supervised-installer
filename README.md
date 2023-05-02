@@ -7,7 +7,7 @@ Instructions for installing Home Assistant Supervised on TV box can be found [he
 
 ```bash
 wget https://github.com/Travis90x/supervised-installer/releases/latest/download/homeassistant-supervised.deb
-apt install ./homeassistant-supervised.deb
+sudo apt install ./homeassistant-supervised.deb
 ```
 
 ## Supported Machine types
