@@ -1,0 +1,28 @@
+alias: Pulsante Cancello + Luci
+description: ""
+trigger:
+  - platform: template
+    value_template: >-
+      {{ states('sensor.sonoff_a480053261') == 'double' or
+      states('sensor.sonoff_a480053261') == 'hold' }}
+condition: []
+action:
+  - service: light.turn_on
+    metadata: {}
+    data: {}
+    target:
+      entity_id: light.sonoff_a48003717f
+  - service: light.turn_off
+    metadata: {}
+    data: {}
+    target:
+      entity_id:
+        - light.sonoff_a4800223d5
+        - light.sonoff_a480027247
+        - light.sonoff_a4800200f9
+        - light.sonoff_a480018b2f
+        - light.sonoff_a480018c30
+        - light.veletta_cucina
+        - light.veletta_soggiorno
+        - light.studio
+mode: single
