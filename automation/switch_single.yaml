@@ -1,0 +1,13 @@
+alias: Pulsante
+description: ""
+trigger:
+  - platform: template
+    value_template: "{{ states('sensor.sonoff_a480053261') == 'single' }}"
+condition: []
+action:
+  - service: light.turn_on
+    metadata: {}
+    data: {}
+    target:
+      entity_id: light.sonoff_a48003717f
+mode: single
