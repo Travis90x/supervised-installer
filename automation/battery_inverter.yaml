@@ -1,0 +1,34 @@
+alias: °Batteria accumulo
+description: ""
+trigger:
+  - platform: time_pattern
+    seconds: /10
+condition: []
+action:
+  - choose:
+      - conditions:
+          - condition: numeric_state
+            entity_id: sensor.potenza_prelevata
+            above: 130
+          - condition: template
+            value_template: "{{ states('light.heltec_pwm_heltec') == 'off' }}"
+          - condition: or
+            conditions:
+              - condition: state
+                entity_id: sun.sun
+                state: below_horizon
+              - condition: time
+                after: "12:00:00"
+                before: "15:00:00"
+        sequence:
+          - type: turn_on
+            device_id: 7423aa7fd5ba880108c8ea62922b3f4c
+            entity_id: 99030edefdbe3742e346100f1efad0f7
+            domain: switch
+      - conditions: []
+        sequence:
+          - type: turn_off
+            device_id: 7423aa7fd5ba880108c8ea62922b3f4c
+            entity_id: 99030edefdbe3742e346100f1efad0f7
+            domain: switch
+mode: single
