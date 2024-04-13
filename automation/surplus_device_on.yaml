@@ -1,0 +1,45 @@
+alias: Acquario Pompa Surplus
+description: ""
+trigger:
+  - platform: time_pattern
+    minutes: /1
+condition:
+  - condition: time
+    after: "09:00:00"
+    before: "21:00:00"
+    weekday:
+      - mon
+      - tue
+      - wed
+      - thu
+      - fri
+      - sat
+      - sun
+action:
+  - if:
+      - condition: or
+        conditions:
+          - condition: numeric_state
+            entity_id: sensor.contabilizzatore_1_potenza
+            below: 25
+          - condition: and
+            conditions:
+              - condition: numeric_state
+                entity_id: sensor.contabilizzatore_1_potenza
+                below: 15
+              - condition: device
+                type: is_on
+                device_id: 53266eb74c050a17519254aa9a9a928f
+                entity_id: light.sonoff_a480053343
+                domain: light
+    then:
+      - type: turn_on
+        device_id: 53266eb74c050a17519254aa9a9a928f
+        entity_id: light.sonoff_a480053343
+        domain: light
+    else:
+      - type: turn_off
+        device_id: 53266eb74c050a17519254aa9a9a928f
+        entity_id: light.sonoff_a480053343
+        domain: light
+mode: queued
