@@ -37,21 +37,28 @@ touch ${SUPERVISOR_STARTUP_MARKER}
 if [ -z "${SUPERVISOR_IMAGE_ID}" ]; then
     # Get the latest from update information
     # Using updater information instead of config. If the config version is
-    # broken, this creates a way (e.g., bad release).
+    # broken, this creates a way back (e.g., bad release).
     SUPERVISOR_VERSION=$(jq -r '.supervisor // "latest"' "${SUPERVISOR_DATA}/updater.json" || echo "latest")
+
+																	  
+				  
+												   
+																														 
+	  
 
     echo "[WARNING] Supervisor image missing, downloading a fresh one: ${SUPERVISOR_VERSION}"
 
     # Pull in the Supervisor
     if docker pull "${SUPERVISOR_IMAGE}:${SUPERVISOR_VERSION}"; then
-        # Tag as latest if versioned
-        if [ "${SUPERVISOR_VERSION}" != "latest" ]; then
-            docker tag "${SUPERVISOR_IMAGE}:${SUPERVISOR_VERSION}" "${SUPERVISOR_IMAGE}:latest"
-        fi
+        # Tag as latest													
+        docker tag "${SUPERVISOR_IMAGE}:${SUPERVISOR_VERSION}" "${SUPERVISOR_IMAGE}:latest"	  
     else
         # Pull failed, updater info might be corrupted, re-trying with latest
-        echo "[WARNING] Supervisor downloading failed trying: latest"
+																	
+									 
+        echo "[ERROR] Supervisor downloading failed trying: latest"
         docker pull "${SUPERVISOR_IMAGE}:latest"
+			  
     fi
 
     SUPERVISOR_IMAGE_ID=$(docker inspect --format='{{.Id}}' "${SUPERVISOR_IMAGE}" || echo "")
@@ -82,12 +89,13 @@ if [ -z "${SUPERVISOR_CONTAINER_ID}" ]; then
         --name hassio_supervisor \
         --privileged --security-opt apparmor="hassio-supervisor" \
         -v /run/docker.sock:/run/docker.sock:rw \
+        -v /run/containerd/containerd.sock:/run/containerd/containerd.sock:rw \
         -v /run/systemd-journal-gatewayd.sock:/run/systemd-journal-gatewayd.sock:rw \
         -v /run/dbus:/run/dbus:ro \
         -v /run/supervisor:/run/os:rw \
         -v /run/udev:/run/udev:ro \
         -v /etc/machine-id:/etc/machine-id:ro \
-        -v ${SUPERVISOR_DATA}:/data:rw \
+        -v ${SUPERVISOR_DATA}:/data:rw,slave \
         -e SUPERVISOR_SHARE=${SUPERVISOR_DATA} \
         -e SUPERVISOR_NAME=hassio_supervisor \
         -e SUPERVISOR_MACHINE=${SUPERVISOR_MACHINE} \
