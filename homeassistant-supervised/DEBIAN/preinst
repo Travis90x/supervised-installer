@@ -12,12 +12,21 @@ warn ""
 
 # Check if we are running on a supported OS
 BYPASS_OS_CHECK=${BYPASS_OS_CHECK:-false}
+																				
+
 CURRENT_OS=$(lsb_release -d)
 if [[ $CURRENT_OS != *"Debian GNU/Linux 11 (bullseye)"* ]]; then
 # Strip first feild of string
     CURRENT_OS=$(echo $CURRENT_OS | cut -d' ' -f2-)
+									   
+						 
+			 
+	  
+	
+
+									 
     if [[ $BYPASS_OS_CHECK != "true" ]]; then
-        warn "${CURRENT_OS} is not supported, but the installation run anyway!"
+        error "${CURRENT_OS} is not supported, but the installation run anyway!"
     fi
     warn "Bypassing OS check..."
     warn "${CURRENT_OS} is not officially supported!"
@@ -27,7 +36,7 @@ fi
 # Check if we are running on a supported architecture
 ARCH=$(uname -m)
 if [[ ! "i386|i686|x86_64|arm|armv6l|armv7l|aarch64" == *"$ARCH"* ]]; then
-    warn "${ARCH} is not supported!"
+    error "${ARCH} is not supported!"
 fi
 
 # Check if Modem Manager is enabled
@@ -42,7 +51,24 @@ if [[ "$(sysctl --values kernel.dmesg_restrict)" != "0" ]]; then
     echo "kernel.dmesg_restrict=0" >> /etc/sysctl.conf
 fi
 
+# If the hassio_supervisor service is running or exists, stop it 
+if [[ "$(systemctl is-active hassio-supervisor.service)" == "active" ]]; then
+    info "Stopping hassio_supervisor service"
+    systemctl stop hassio-supervisor.service
+fi
 
+# If the hassio_apparmor service is running or exists, stop it
+if [[ "$(systemctl is-active hassio-apparmor.service)" == "active" ]]; then
+    info "Stopping hassio_apparmor service"
+    systemctl stop hassio-apparmor.service
+fi
+
+# Check for existing hassio_supervisor container and destroy it
+if [[ "$(docker ps -aq -f name=hassio_supervisor)" ]]; then
+    # ensure the hassio_supervisor service is stopped
+    info "Removing existing hassio_supervisor container"
+    docker container rm --force hassio_supervisor > /dev/null
+fi
 
 dpkg-divert --package homeassistant-supervised --add --rename \
     --divert /etc/NetworkManager/NetworkManager.conf.real /etc/NetworkManager/NetworkManager.conf
@@ -55,3 +81,6 @@ dpkg-divert --package homeassistant-supervised --add --rename \
 
 dpkg-divert --package homeassistant-supervised --add --rename \
     --divert /etc/network/interfaces.real /etc/network/interfaces
+
+dpkg-divert --package homeassistant-supervised --add --rename \
+    --divert /etc/systemd/resolved.conf.real /etc/systemd/resolved.conf
