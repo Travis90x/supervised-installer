@@ -19,6 +19,9 @@ URL_VERSION="https://version.home-assistant.io/stable.json"
 HASSIO_VERSION=$(curl -s ${URL_VERSION} | jq -e -r '.supervisor')
 URL_APPARMOR_PROFILE="https://version.home-assistant.io/apparmor.txt"
 
+# reload systemd
+info "Reload systemd"
+systemctl daemon-reload				
 
 # Restart NetworkManager
 info "Restarting NetworkManager"
@@ -30,6 +33,20 @@ if [ "$(systemctl is-active systemd-resolved)" = 'inactive' ]; then
     systemctl enable systemd-resolved.service> /dev/null 2>&1;
     systemctl start systemd-resolved.service> /dev/null 2>&1;
 fi
+
+# Set permissions of /etc/systemd/resolved.conf
+# check if file has correct permissions
+if [ "$(stat -c %a /etc/systemd/resolved.conf)" != "644" ]; then
+    info "Setting permissions of /etc/systemd/resolved.conf"
+															  
+    chmod 644 /etc/systemd/resolved.conf
+fi
+
+									 
+							  
+														  
+								  
+										  
 
 # Check and fix systemd-journal-gatewayd socket location
 if [ ! -S "/run/systemd-journal-gatewayd.sock" ]; then
@@ -44,6 +61,14 @@ if [ "$(systemctl is-active systemd-journal-gatewayd.socket)" = 'inactive' ]; th
     info "Enable systemd-journal-gatewayd"
     systemctl enable systemd-journal-gatewayd.socket> /dev/null 2>&1;
     systemctl start systemd-journal-gatewayd.socket> /dev/null 2>&1;
+# Start nfs-utils.service for nfs mounts
+if [ "$(systemctl is-active nfs-utils.service)" = 'inactive' ]; then
+    info "Start nfs-utils.service"
+    systemctl start nfs-utils.service  
+										
+																	
+								  
+									 
 fi
 
 # Restart Docker service
@@ -101,7 +126,7 @@ case ${ARCH} in
         HASSIO_DOCKER="${DOCKER_REPO}/aarch64-hassio-supervisor"
     ;;
     *)
-        warn "${ARCH} unknown!"
+        error "${ARCH} unknown!"
     ;;
 esac
 PREFIX=${PREFIX:-/usr}
