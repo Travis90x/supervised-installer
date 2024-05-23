@@ -223,11 +223,131 @@ action:
                   - condition: numeric_state
                     entity_id: light.heltec_pwm_heltec
                     attribute: brightness
-                    below: 255
+                    below: 204
                 sequence:
                   - service: light.turn_on
                     data:
                       brightness: 204
+                    target:
+                      entity_id: light.heltec_pwm_heltec
+              - conditions:
+                  - condition: numeric_state
+                    entity_id: light.heltec_pwm_heltec
+                    attribute: brightness
+                    above: 203
+                  - condition: numeric_state
+                    entity_id: light.heltec_pwm_heltec
+                    attribute: brightness
+                    below: 211
+                sequence:
+                  - service: light.turn_on
+                    data:
+                      brightness: 211
+                    target:
+                      entity_id: light.heltec_pwm_heltec
+              - conditions:
+                  - condition: numeric_state
+                    entity_id: light.heltec_pwm_heltec
+                    attribute: brightness
+                    above: 203
+                  - condition: numeric_state
+                    entity_id: light.heltec_pwm_heltec
+                    attribute: brightness
+                    below: 211
+                sequence:
+                  - service: light.turn_on
+                    data:
+                      brightness: 211
+                    target:
+                      entity_id: light.heltec_pwm_heltec
+              - conditions:
+                  - condition: numeric_state
+                    entity_id: light.heltec_pwm_heltec
+                    attribute: brightness
+                    above: 210
+                  - condition: numeric_state
+                    entity_id: light.heltec_pwm_heltec
+                    attribute: brightness
+                    below: 218
+                sequence:
+                  - service: light.turn_on
+                    data:
+                      brightness: 218
+                    target:
+                      entity_id: light.heltec_pwm_heltec
+              - conditions:
+                  - condition: numeric_state
+                    entity_id: light.heltec_pwm_heltec
+                    attribute: brightness
+                    above: 217
+                  - condition: numeric_state
+                    entity_id: light.heltec_pwm_heltec
+                    attribute: brightness
+                    below: 225
+                sequence:
+                  - service: light.turn_on
+                    data:
+                      brightness: 225
+                    target:
+                      entity_id: light.heltec_pwm_heltec
+              - conditions:
+                  - condition: numeric_state
+                    entity_id: light.heltec_pwm_heltec
+                    attribute: brightness
+                    above: 224
+                  - condition: numeric_state
+                    entity_id: light.heltec_pwm_heltec
+                    attribute: brightness
+                    below: 232
+                sequence:
+                  - service: light.turn_on
+                    data:
+                      brightness: 232
+                    target:
+                      entity_id: light.heltec_pwm_heltec
+              - conditions:
+                  - condition: numeric_state
+                    entity_id: light.heltec_pwm_heltec
+                    attribute: brightness
+                    above: 231
+                  - condition: numeric_state
+                    entity_id: light.heltec_pwm_heltec
+                    attribute: brightness
+                    below: 240
+                sequence:
+                  - service: light.turn_on
+                    data:
+                      brightness: 240
+                    target:
+                      entity_id: light.heltec_pwm_heltec
+              - conditions:
+                  - condition: numeric_state
+                    entity_id: light.heltec_pwm_heltec
+                    attribute: brightness
+                    above: 239
+                  - condition: numeric_state
+                    entity_id: light.heltec_pwm_heltec
+                    attribute: brightness
+                    below: 248
+                sequence:
+                  - service: light.turn_on
+                    data:
+                      brightness: 248
+                    target:
+                      entity_id: light.heltec_pwm_heltec
+              - conditions:
+                  - condition: numeric_state
+                    entity_id: light.heltec_pwm_heltec
+                    attribute: brightness
+                    above: 247
+                  - condition: numeric_state
+                    entity_id: light.heltec_pwm_heltec
+                    attribute: brightness
+                    below: 256
+                sequence:
+                  - service: light.turn_on
+                    data:
+                      brightness: 256
                     target:
                       entity_id: light.heltec_pwm_heltec
       - conditions:
@@ -372,11 +492,131 @@ action:
                   - condition: numeric_state
                     entity_id: light.heltec_pwm_heltec
                     attribute: brightness
-                    below: 257
+                    below: 204
                 sequence:
                   - service: light.turn_on
                     data:
                       brightness: 204
+                    target:
+                      entity_id: light.heltec_pwm_heltec
+              - conditions:
+                  - condition: numeric_state
+                    entity_id: light.heltec_pwm_heltec
+                    attribute: brightness
+                    above: 203
+                  - condition: numeric_state
+                    entity_id: light.heltec_pwm_heltec
+                    attribute: brightness
+                    below: 211
+                sequence:
+                  - service: light.turn_on
+                    data:
+                      brightness: 211
+                    target:
+                      entity_id: light.heltec_pwm_heltec
+              - conditions:
+                  - condition: numeric_state
+                    entity_id: light.heltec_pwm_heltec
+                    attribute: brightness
+                    above: 203
+                  - condition: numeric_state
+                    entity_id: light.heltec_pwm_heltec
+                    attribute: brightness
+                    below: 211
+                sequence:
+                  - service: light.turn_on
+                    data:
+                      brightness: 211
+                    target:
+                      entity_id: light.heltec_pwm_heltec
+              - conditions:
+                  - condition: numeric_state
+                    entity_id: light.heltec_pwm_heltec
+                    attribute: brightness
+                    above: 210
+                  - condition: numeric_state
+                    entity_id: light.heltec_pwm_heltec
+                    attribute: brightness
+                    below: 218
+                sequence:
+                  - service: light.turn_on
+                    data:
+                      brightness: 218
+                    target:
+                      entity_id: light.heltec_pwm_heltec
+              - conditions:
+                  - condition: numeric_state
+                    entity_id: light.heltec_pwm_heltec
+                    attribute: brightness
+                    above: 217
+                  - condition: numeric_state
+                    entity_id: light.heltec_pwm_heltec
+                    attribute: brightness
+                    below: 225
+                sequence:
+                  - service: light.turn_on
+                    data:
+                      brightness: 225
+                    target:
+                      entity_id: light.heltec_pwm_heltec
+              - conditions:
+                  - condition: numeric_state
+                    entity_id: light.heltec_pwm_heltec
+                    attribute: brightness
+                    above: 224
+                  - condition: numeric_state
+                    entity_id: light.heltec_pwm_heltec
+                    attribute: brightness
+                    below: 232
+                sequence:
+                  - service: light.turn_on
+                    data:
+                      brightness: 232
+                    target:
+                      entity_id: light.heltec_pwm_heltec
+              - conditions:
+                  - condition: numeric_state
+                    entity_id: light.heltec_pwm_heltec
+                    attribute: brightness
+                    above: 231
+                  - condition: numeric_state
+                    entity_id: light.heltec_pwm_heltec
+                    attribute: brightness
+                    below: 240
+                sequence:
+                  - service: light.turn_on
+                    data:
+                      brightness: 240
+                    target:
+                      entity_id: light.heltec_pwm_heltec
+              - conditions:
+                  - condition: numeric_state
+                    entity_id: light.heltec_pwm_heltec
+                    attribute: brightness
+                    above: 239
+                  - condition: numeric_state
+                    entity_id: light.heltec_pwm_heltec
+                    attribute: brightness
+                    below: 248
+                sequence:
+                  - service: light.turn_on
+                    data:
+                      brightness: 248
+                    target:
+                      entity_id: light.heltec_pwm_heltec
+              - conditions:
+                  - condition: numeric_state
+                    entity_id: light.heltec_pwm_heltec
+                    attribute: brightness
+                    above: 247
+                  - condition: numeric_state
+                    entity_id: light.heltec_pwm_heltec
+                    attribute: brightness
+                    below: 256
+                sequence:
+                  - service: light.turn_on
+                    data:
+                      brightness: 256
                     target:
                       entity_id: light.heltec_pwm_heltec
       - conditions:
@@ -458,11 +698,131 @@ action:
                   - condition: numeric_state
                     entity_id: light.heltec_pwm_heltec
                     attribute: brightness
-                    below: 257
+                    below: 204
                 sequence:
                   - service: light.turn_on
                     data:
                       brightness: 204
+                    target:
+                      entity_id: light.heltec_pwm_heltec
+              - conditions:
+                  - condition: numeric_state
+                    entity_id: light.heltec_pwm_heltec
+                    attribute: brightness
+                    above: 203
+                  - condition: numeric_state
+                    entity_id: light.heltec_pwm_heltec
+                    attribute: brightness
+                    below: 211
+                sequence:
+                  - service: light.turn_on
+                    data:
+                      brightness: 211
+                    target:
+                      entity_id: light.heltec_pwm_heltec
+              - conditions:
+                  - condition: numeric_state
+                    entity_id: light.heltec_pwm_heltec
+                    attribute: brightness
+                    above: 203
+                  - condition: numeric_state
+                    entity_id: light.heltec_pwm_heltec
+                    attribute: brightness
+                    below: 211
+                sequence:
+                  - service: light.turn_on
+                    data:
+                      brightness: 211
+                    target:
+                      entity_id: light.heltec_pwm_heltec
+              - conditions:
+                  - condition: numeric_state
+                    entity_id: light.heltec_pwm_heltec
+                    attribute: brightness
+                    above: 210
+                  - condition: numeric_state
+                    entity_id: light.heltec_pwm_heltec
+                    attribute: brightness
+                    below: 218
+                sequence:
+                  - service: light.turn_on
+                    data:
+                      brightness: 218
+                    target:
+                      entity_id: light.heltec_pwm_heltec
+              - conditions:
+                  - condition: numeric_state
+                    entity_id: light.heltec_pwm_heltec
+                    attribute: brightness
+                    above: 217
+                  - condition: numeric_state
+                    entity_id: light.heltec_pwm_heltec
+                    attribute: brightness
+                    below: 225
+                sequence:
+                  - service: light.turn_on
+                    data:
+                      brightness: 225
+                    target:
+                      entity_id: light.heltec_pwm_heltec
+              - conditions:
+                  - condition: numeric_state
+                    entity_id: light.heltec_pwm_heltec
+                    attribute: brightness
+                    above: 224
+                  - condition: numeric_state
+                    entity_id: light.heltec_pwm_heltec
+                    attribute: brightness
+                    below: 232
+                sequence:
+                  - service: light.turn_on
+                    data:
+                      brightness: 232
+                    target:
+                      entity_id: light.heltec_pwm_heltec
+              - conditions:
+                  - condition: numeric_state
+                    entity_id: light.heltec_pwm_heltec
+                    attribute: brightness
+                    above: 231
+                  - condition: numeric_state
+                    entity_id: light.heltec_pwm_heltec
+                    attribute: brightness
+                    below: 240
+                sequence:
+                  - service: light.turn_on
+                    data:
+                      brightness: 240
+                    target:
+                      entity_id: light.heltec_pwm_heltec
+              - conditions:
+                  - condition: numeric_state
+                    entity_id: light.heltec_pwm_heltec
+                    attribute: brightness
+                    above: 239
+                  - condition: numeric_state
+                    entity_id: light.heltec_pwm_heltec
+                    attribute: brightness
+                    below: 248
+                sequence:
+                  - service: light.turn_on
+                    data:
+                      brightness: 248
+                    target:
+                      entity_id: light.heltec_pwm_heltec
+              - conditions:
+                  - condition: numeric_state
+                    entity_id: light.heltec_pwm_heltec
+                    attribute: brightness
+                    above: 247
+                  - condition: numeric_state
+                    entity_id: light.heltec_pwm_heltec
+                    attribute: brightness
+                    below: 256
+                sequence:
+                  - service: light.turn_on
+                    data:
+                      brightness: 256
                     target:
                       entity_id: light.heltec_pwm_heltec
       - conditions:
@@ -475,11 +835,25 @@ action:
             above: 178
         sequence:
           - choose:
-              - conditions:
-                  - condition: numeric_state
-                    entity_id: light.heltec_pwm_heltec
-                    attribute: brightness
-                    above: 178
+              - conditions: []
+                sequence:
+                  - service: light.turn_on
+                    data:
+                      brightness: 178
+                    target:
+                      entity_id: light.heltec_pwm_heltec
+      - conditions:
+          - condition: numeric_state
+            entity_id: sensor.potenza_ceduta
+            below: 1
+          - condition: numeric_state
+            entity_id: light.heltec_pwm_heltec
+            attribute: brightness
+            above: 148
+            below: 179
+        sequence:
+          - choose:
+              - conditions: []
                 sequence:
                   - service: light.turn_on
                     data:
@@ -493,7 +867,7 @@ action:
           - condition: numeric_state
             entity_id: light.heltec_pwm_heltec
             attribute: brightness
-            below: 179
+            below: 149
         sequence:
           - choose:
               - conditions:
@@ -523,4 +897,9 @@ action:
                     data: {}
                     target:
                       entity_id: light.heltec_pwm_heltec
+  - service: switch.turn_on
+    metadata: {}
+    data: {}
+    target:
+      entity_id: switch.tapo
 mode: single
