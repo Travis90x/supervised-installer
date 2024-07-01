@@ -19,6 +19,7 @@ api:
     key: !secret api_key_heltec_v3
 
 ota:
+  - platform: esphome
 
 wifi:
   ssid: !secret wifi_ssid
@@ -72,43 +73,54 @@ sensor:
     entity_category: "diagnostic"
 
   - platform: homeassistant
-    id: consumo_istantaneo
+    id: potenza_consumo_istantaneo
     entity_id: sensor.contabilizzatore_1_potenza
     internal: true
 
   - platform: homeassistant
-    id: daily_import
-    entity_id: sensor.daily_import
-    internal: true
-
-  - platform: homeassistant
-    id: daily_export
-    entity_id: sensor.daily_export
-    internal: true
-
-  - platform: homeassistant
-    id: surplus_energia_w
-    entity_id: sensor.surplus_energia_w
-    internal: true
-
-  - platform: homeassistant
     id: potenza_fotovoltaico # potenza_fotovoltaico
-    entity_id: sensor.sonoff_10016fc351_power
+    entity_id: sensor.potenza_fotovoltaico
     internal: true
 
   - platform: homeassistant
-    id: energia_consumata
-    entity_id: sensor.daily_import
+    id: potenza_ceduta  # potenza surplus
+    entity_id: sensor.potenza_ceduta
+    internal: true
+
+  - platform: homeassistant
+    id: energia_acquistata
+    entity_id: sensor.daily_energia_acquistata
+    internal: true
+
+  - platform: homeassistant
+    id: energia_ceduta
+    entity_id: sensor.daily_energia_ceduta
     internal: true
 
   - platform: homeassistant
     id: energia_prodotta
-    entity_id: sensor.sonoff_10016fc351_energy
+    entity_id: sensor.daily_energia_fotovoltaico
+    internal: true
+
+  - platform: homeassistant
+    id: energia_batteria_ceduta # energia_consumata
+    entity_id: sensor.daily_energia_batteria_ceduta
+    internal: true
+
+  - platform: homeassistant
+    id: energia_batteria_prelevata 
+    entity_id: sensor.daily_energia_batteria_prelevata
     internal: true
 
   - platform: homeassistant
     id: percentage_power_charger_1
     entity_id: light.heltec_pwm_heltec
+    attribute: brightness
+    internal: true
+
+  - platform: homeassistant
+    id: percentage_power_charger_1_2
+    entity_id: light.heltec_pwm_heltec2
     internal: true
 
   - platform: homeassistant
@@ -123,12 +135,12 @@ sensor:
 
   - platform: homeassistant
     id: temperatura_interna
-    entity_id: sensor.sonoff_100148c86e_temperature
+    entity_id: sensor.temperatura_interna
     internal: true
 
   - platform: homeassistant
     id: temperatura_esterna
-    entity_id: sensor.sonoff_100148c86e_outdoor_temp
+    entity_id: sensor.temperatura_esterna
     internal: true
 
   - platform: homeassistant
@@ -147,16 +159,19 @@ output:
   - platform: ledc
     pin: GPIO46
     id: pwm_heltec
-    frequency: 1000Hz
+    frequency: 2000Hz
   - platform: ledc
-    pin: GPIO44
-    id: pwm_heltec
-    frequency: 1000Hz
+    pin: GPIO45
+    id: pwm_heltec2
+    frequency: 2000Hz
 
 light:
   - platform: monochromatic
     output: pwm_heltec
     name: "PWM_Heltec"    
+  - platform: monochromatic
+    output: pwm_heltec2
+    name: "PWM_Heltec2" 
 
 time:
   - platform: homeassistant
@@ -204,7 +219,7 @@ graph:
 
 
 interval:
-  - interval: 4s
+  - interval: 5s
     then:
       - display.page.show_next: my_display
       - component.update: my_display
@@ -223,8 +238,8 @@ display:
           it.printf(0, 0, id(icon_font), TextAlign::TOP_LEFT, "󰟑󰌪");
           it.printf(it.get_width() / 2, 0, id(arial), TextAlign::TOP_CENTER, "Travis90x");
           it.image(10, 16, id(solar_icon));
-          it.strftime(it.get_width(), it.get_height() - 48, id(arial), TextAlign::BASELINE_RIGHT, "%a", id(homeassistant_time).now());
-          it.strftime(it.get_width(), it.get_height() - 36, id(arial), TextAlign::BASELINE_RIGHT, "%d", id(homeassistant_time).now());
+          it.strftime(it.get_width(), it.get_height() -48, id(arial), TextAlign::BASELINE_RIGHT, "%a", id(homeassistant_time).now());
+          it.strftime(it.get_width(), it.get_height() -36, id(arial), TextAlign::BASELINE_RIGHT, "%d", id(homeassistant_time).now());
           it.strftime(it.get_width(), it.get_height() -24, id(arial), TextAlign::BASELINE_RIGHT, "%b", id(homeassistant_time).now());
           it.strftime(it.get_width(), it.get_height() -12, id(arial), TextAlign::BASELINE_RIGHT, "%Y", id(homeassistant_time).now());
           it.strftime(it.get_width(), it.get_height(), id(arial), TextAlign::BASELINE_RIGHT, "%H:%M", id(homeassistant_time).now());
@@ -234,25 +249,30 @@ display:
       - id: page2
         lambda: |-
           it.printf(0, 0, id(icon_font), TextAlign::TOP_LEFT, "󰥛");
-          it.printf(it.get_width() / 2, 0, id(arial), TextAlign::TOP_CENTER, "ENERGIA");
-          it.printf(it.get_width(), it.get_height() - 37, id(arial), TextAlign::BASELINE_RIGHT, "Consumata %.1f KWh", id(energia_consumata).state); 
-          it.printf(it.get_width(), it.get_height() -25, id(arial), TextAlign::BASELINE_RIGHT, "Prelevata %.1f KWh", id(daily_import).state / 1000);   
-          it.printf(it.get_width(), it.get_height() -13, id(arial), TextAlign::BASELINE_RIGHT, "Prodotta %.2f KWh", id(energia_prodotta).state);      
-          it.printf(it.get_width(), it.get_height() -1, id(arial), TextAlign::BASELINE_RIGHT, "Ceduta %.2f Wh", id(daily_export).state);
+          it.printf(it.get_width() / 2, 0, id(arial), TextAlign::TOP_LEFT, "ENERGIA");
+          it.printf(it.get_width(), it.get_height() -48, id(arial), TextAlign::BASELINE_RIGHT, "IN %.1f kWh", id(energia_acquistata).state);
+          it.printf(it.get_width(), it.get_height() -36, id(arial), TextAlign::BASELINE_RIGHT, "OUT %.1f kWh", id(energia_ceduta).state / 1000);
+          it.printf(it.get_width(), it.get_height() -24, id(arial), TextAlign::BASELINE_RIGHT, "SOLE %.0f Wh", id(energia_prodotta).state);
+          it.printf(it.get_width(), it.get_height() -12, id(arial), TextAlign::BASELINE_RIGHT, "B.OUT %.0f Wh", id(energia_batteria_ceduta).state);
+          it.printf(it.get_width(), it.get_height(), id(arial), TextAlign::BASELINE_RIGHT, "B.IN %.0f Wh", id(energia_batteria_prelevata).state);
 
       - id: page3
         lambda: |-
-          it.printf(it.get_width(), it.get_height() -28, id(arial), TextAlign::BASELINE_RIGHT, "Consumo %.1f W", id(consumo_istantaneo).state);
-          it.printf(it.get_width(), it.get_height() -15, id(arial), TextAlign::BASELINE_RIGHT, "Solar %.2f W", id(potenza_fotovoltaico).state);
-          it.printf(it.get_width(), it.get_height() -2, id(arial), TextAlign::BASELINE_RIGHT, "Surplus %.2f W", id(surplus_energia_w).state);
+          it.printf(0, 0, id(icon_font), TextAlign::TOP_LEFT, "󰥛");
+          it.printf(it.get_width() / 2, 0, id(arial), TextAlign::TOP_CENTER, "POTENZA");
+          it.printf(it.get_width(), it.get_height() -28, id(arial), TextAlign::BASELINE_RIGHT, "IN %.1f W", id(potenza_consumo_istantaneo).state);
+          it.printf(it.get_width(), it.get_height() -15, id(arial), TextAlign::BASELINE_RIGHT, "SOLE %.2f W", id(potenza_fotovoltaico).state);
+          it.printf(it.get_width(), it.get_height() -2, id(arial), TextAlign::BASELINE_RIGHT, "OUT %.2f W", id(potenza_ceduta).state);
 
       - id: page4
         lambda: |-
           it.printf(0, 0, id(icon_font), TextAlign::TOP_LEFT, "󰥛");
-          it.printf(it.get_width() / 2, 0, id(arial), TextAlign::TOP_CENTER, "Surplus to PWM");
-          it.printf(it.get_width(), it.get_height() -35, id(arial), TextAlign::BASELINE_RIGHT, "Charger @ %.0f%%", id(percentage_power_charger_1).state);   
+          it.printf(it.get_width() / 2, 0, id(arial), TextAlign::TOP_CENTER, "CHARGER");
+          float value = id(percentage_power_charger_1).state;
+          float percent_value = (value / 255.0) * 100.0;
+          it.printf(it.get_width(), it.get_height() - 35, id(arial), TextAlign::BASELINE_RIGHT, "Charger @ %.0f%%", percent_value);
           it.printf(it.get_width(), it.get_height() -20, id(arial), TextAlign::BASELINE_RIGHT, "Switch @ %.0f%%", id(switch_heltec).state);   
-          it.printf(it.get_width(), it.get_height() -5, id(arial), TextAlign::BASELINE_RIGHT, "200-300W @ %.0f%%", id(percentage_power_charger_3).state);
+          it.printf(it.get_width(), it.get_height() -5, id(arial), TextAlign::BASELINE_RIGHT, "Charger 2 @ %.0f%%", id(percentage_power_charger_1_2).state);
 
       - id: page5
         lambda: |-
@@ -262,15 +282,17 @@ display:
       - id: page6
         lambda: |-
           it.printf(0, 0, id(icon_font), TextAlign::TOP_LEFT, "󰽕");
-          it.printf(it.get_width(), it.get_height() -20, id(arial), TextAlign::BASELINE_RIGHT, "Temp. interna: %.1f°C", id(temperatura_interna).state);
-          it.printf(it.get_width(), it.get_height() -5, id(arial), TextAlign::BASELINE_RIGHT, "Temp. esterna: %.1f°C", id(temperatura_esterna).state);
+          it.printf(it.get_width() / 2, 0, id(arial), TextAlign::TOP_CENTER, "TEMPERATURA");
+          it.printf(it.get_width(), it.get_height() -20, id(arial), TextAlign::BASELINE_RIGHT, "INTERNA: %.1f°C", id(temperatura_interna).state);
+          it.printf(it.get_width(), it.get_height() -5, id(arial), TextAlign::BASELINE_RIGHT, "ESTERNA: %.1f°C", id(temperatura_esterna).state);
 
       - id: page7
         lambda: |-
           it.printf(0, 0, id(icon_font), TextAlign::TOP_LEFT, "󰖩");
-          it.printf(it.get_width(), it.get_height() - 26, id(arial), TextAlign::BASELINE_RIGHT, "WiFi SSID: %s", id(ip_address).state.c_str());
-          it.printf(it.get_width(), it.get_height() - 13, id(arial), TextAlign::BASELINE_RIGHT, "WiFi Signal: %.0f%", id(wifi_signal_percentage).state);
-          it.printf(it.get_width(), it.get_height() - 1, id(arial), TextAlign::BASELINE_RIGHT, "WiFi: %.0f dBm", id(wifi_signal_db).state);
+          it.printf(it.get_width() / 2, 0, id(arial), TextAlign::TOP_CENTER, "WI-FI");
+          it.printf(it.get_width(), it.get_height() - 26, id(arial), TextAlign::BASELINE_RIGHT, "IP: %s", id(ip_address).state.c_str());
+          it.printf(it.get_width(), it.get_height() - 13, id(arial), TextAlign::BASELINE_RIGHT, "Signal: %.0f%%", id(wifi_signal_percentage).state);
+          it.printf(it.get_width(), it.get_height() - 1, id(arial), TextAlign::BASELINE_RIGHT, "Potenza: %.0f dBm", id(wifi_signal_db).state);
 
 font:
   - file: 'arial.ttf'
