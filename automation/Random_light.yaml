@@ -1,0 +1,35 @@
+alias: Random light
+description: Turn ON the light randomly between 10 PM and 6 AM
+trigger:
+  - platform: state
+    entity_id:
+      - automation.random_light
+    to: "on"
+condition:
+  - condition: time
+    after: "22:00:00"
+    before: "6:00:00"
+action:
+  - choose:
+      - conditions:
+          - condition: state
+            entity_id: light.light
+            state: "off"
+        sequence:
+          - service: light.turn_on
+            target:
+              entity_id: light.light
+            data: {}
+          - delay:
+              seconds: "{{ range(3, 6) | random }}"
+          - service: light.turn_off
+            target:
+              entity_id: light.light
+            data: {}
+          - delay:
+              seconds: "{{ range(3, 6) | random }}"
+  - service: automation.turn_off
+    target:
+      entity_id: automation.random_light
+    data:
+      stop_actions: true
