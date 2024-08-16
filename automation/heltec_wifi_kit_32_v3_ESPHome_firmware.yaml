@@ -13,7 +13,7 @@ action:
             below: 5
           - condition: numeric_state
             entity_id: sensor.potenza_batteria_prelevata
-            below: 350
+            below: 340
         sequence:
           - service: light.turn_on
             metadata: {}
@@ -294,7 +294,7 @@ action:
             below: -101
           - condition: numeric_state
             entity_id: sensor.potenza_batteria_prelevata
-            below: 350
+            below: 340
         sequence:
           - service: light.turn_on
             metadata: {}
@@ -514,7 +514,7 @@ action:
             below: -201
           - condition: numeric_state
             entity_id: sensor.potenza_batteria_prelevata
-            below: 350
+            below: 340
         sequence:
           - service: light.turn_on
             metadata: {}
