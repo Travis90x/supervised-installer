@@ -1,0 +1,90 @@
+alias: ° Variabile
+description: ""
+triggers:
+  - seconds: /15
+    trigger: time_pattern
+conditions: []
+actions:
+  - if:
+      - condition: state
+        entity_id: sun.sun
+        state: above_horizon
+        enabled: false
+    then:
+      - metadata: {}
+        data: {}
+        target:
+          entity_id: switch.tapo
+        action: switch.turn_on
+        enabled: false
+  - variables:
+      powers:
+        - 0
+        - 10
+        - 20
+        - 40
+        - 70
+        - 90
+        - 110
+        - 115
+        - 127
+        - 135
+        - 148
+        - 155
+        - 163
+        - 169
+        - 175
+        - 180
+        - 182
+      watts:
+        - -30
+        - 0
+        - 30
+        - 60
+        - 90
+        - 120
+        - 150
+        - 180
+        - 210
+        - 240
+        - 270
+        - 300
+        - 330
+        - 360
+        - 390
+        - 410
+        - 440
+      watt_index: >
+        {% set dev2 = namespace(index2=0) %} {% set dev2.index2 = 0 | int %} {%
+        set brightness = state_attr('light.heltec_pwm_gpio46', 'brightness') %}
+        {% set pwm_percentage = (brightness if brightness is not none else 0) |
+        int %} {% for i in range(0, powers | length) %} {% if pwm_percentage >=
+        powers[i] %}
+            {% set dev2.index2 = i %}
+          {% endif %}
+        {% endfor %} {{ dev2.index2 }}
+      watts_target: >
+        {% set watts_added = (watts[watt_index] if watts[watt_index] >= 1 else
+        0) | int %} {{ states('sensor.potenza_ceduta') | int - 400 + watts_added
+        | int + states('input_number.fake_sensor') | int }}
+      power_index: >
+        {% set dev = namespace(index=0) %} {% set dev.index = 0 | int %} {% for
+        i in range(0, powers | length) %}
+          {% if watts_target >= watts[i] %}
+            {% set dev.index = i %}
+          {% endif %}
+        {% endfor %} {{ dev.index }}
+  - target:
+      entity_id: light.heltec_pwm_gpio46
+    data:
+      brightness: "{{ powers[power_index] }}"
+    action: light.turn_on
+  - target:
+      entity_id: input_number.fake_watt
+    data:
+      value: >-
+        {{ states('sensor.potenza_ceduta') | int - 400 | int +
+        states('input_number.fake_sensor') | int }}
+    action: input_number.set_value
+    enabled: true
+mode: single
