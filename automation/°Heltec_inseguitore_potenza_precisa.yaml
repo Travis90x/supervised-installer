@@ -1,0 +1,78 @@
+alias: °Heltec_inseguitore_potenza_precisa
+description: ""
+triggers:
+  - seconds: /15
+    trigger: time_pattern
+conditions: []
+actions:
+  - if:
+      - condition: state
+        entity_id: sun.sun
+        state: above_horizon
+    then:
+      - metadata: {}
+        data: {}
+        target:
+          entity_id: switch.tapo
+        action: switch.turn_on
+  - variables:
+      powers:
+        - 0
+        - 20
+        - 20
+        - 40
+        - 70
+        - 90
+        - 110
+        - 115
+        - 127
+        - 135
+        - 148
+        - 155
+        - 163
+        - 169
+        - 175
+        - 180
+        - 182
+      watts:
+        - -15
+        - -5
+        - 10
+        - 30
+        - 60
+        - 90
+        - 120
+        - 150
+        - 180
+        - 210
+        - 240
+        - 270
+        - 300
+        - 330
+        - 360
+        - 390
+        - 410
+      watt_index: >
+        {% set dev2 = namespace(index2=0) %} {% set dev2.index2 = 0 | int %} {%
+        for i in range(0, powers | length) %}
+          {% if state_attr('light.heltec_pwm_gpio46', 'brightness') >= powers[i] %}
+            {% set dev2.index2 = i %}
+          {% endif %}
+        {% endfor %} {{ dev2.index2 }}
+      watts_target: >-
+        {{ states('sensor.potenza_ceduta') | int -
+        states('sensor.contabilizzatore_1_potenza') | int +
+        states('sensor.potenza_batteria_prelevata') | int }}
+      power_index: >
+        {% set dev = namespace(index=0) %} {% set dev.index = 0 | int %} {% for
+        i in range(0, powers | length) %}
+          {% if watts_target >= watts[i] %}
+            {% set dev.index = i %}
+          {% endif %}
+        {% endfor %} {{ dev.index }}
+  - target:
+      entity_id: light.heltec_pwm_gpio46
+    data:
+      brightness: "{{ powers[power_index] }}"
+    action: light.turn_on
+mode: single
