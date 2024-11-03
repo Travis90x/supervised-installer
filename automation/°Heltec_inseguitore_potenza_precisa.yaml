@@ -53,23 +53,29 @@ actions:
         - 390
         - 410
       watt_index: >
-        {% set dev2 = namespace(index2=0) %} {% set dev2.index2 = 0 | int %} {%
-        for i in range(0, powers | length) %}
-          {% if state_attr('light.heltec_pwm_gpio46', 'brightness') >= powers[i] %}
+        {% set dev2 = namespace(index2=0) %}
+        {% set dev2.index2 = 0 | int %}
+        {% set brightness = state_attr('light.heltec_pwm_gpio46', 'brightness') %}
+        {% set pwm_percentage = (brightness if brightness is not none else 0) | int %}
+        {% for i in range(0, powers | length) %}
+          {% if pwm_percentage >= powers[i] %}
             {% set dev2.index2 = i %}
           {% endif %}
-        {% endfor %} {{ dev2.index2 }}
+        {% endfor %}
+        {{ dev2.index2 }}
       watts_target: >-
         {{ states('sensor.potenza_ceduta') | int -
         states('sensor.contabilizzatore_1_potenza') | int +
         states('sensor.potenza_batteria_prelevata') | int }}
       power_index: >
-        {% set dev = namespace(index=0) %} {% set dev.index = 0 | int %} {% for
-        i in range(0, powers | length) %}
+        {% set dev = namespace(index=0) %}
+        {% set dev.index = 0 | int %}
+        {% for i in range(0, powers | length) %}
           {% if watts_target >= watts[i] %}
             {% set dev.index = i %}
           {% endif %}
-        {% endfor %} {{ dev.index }}
+        {% endfor %}
+        {{ dev.index }}
   - target:
       entity_id: light.heltec_pwm_gpio46
     data:
