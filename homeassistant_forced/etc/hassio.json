@@ -1,0 +1,5 @@
+{
+    "supervisor": "ghcr.io/home-assistant/aarch64-hassio-supervisor",  # Replace "aarch64" with your architecture
+    "machine": "qemuarm",   # Replace "qemuarm" with your machine
+    "data": "/usr/share/hassio"
+}
