@@ -53,6 +53,7 @@ if [ "$(systemctl is-active systemd-journal-gatewayd.socket)" = 'inactive' ]; th
     info "Enable systemd-journal-gatewayd"
     systemctl enable systemd-journal-gatewayd.socket> /dev/null 2>&1;
     systemctl start systemd-journal-gatewayd.socket
+fi
   
 # Start nfs-utils.service for nfs mounts
 if [ "$(systemctl is-active nfs-utils.service)" = 'inactive' ]; then
@@ -164,62 +165,40 @@ info "Installing the 'ha' cli"
 chmod a+x "${PREFIX}/bin/ha"
 
 # Switch to cgroup v1
-if [ -f /etc/default/grub ]
-then
-    if ! grep -q "systemd.unified_cgroup_hierarchy=false" /etc/default/grub; then
-        info "Switching to cgroup v1 in /etc/default/grub"
-        cp /etc/default/grub /etc/default/grub.bak
-        sed -i 's/^GRUB_CMDLINE_LINUX_DEFAULT="/&systemd.unified_cgroup_hierarchy=false /' /etc/default/grub
-        update-grub
-        touch /var/run/reboot-required
-    fi
-elif [ -f /boot/firmware/cmdline.txt ]
-then
-    if ! grep -q "systemd.unified_cgroup_hierarchy=false" /boot/firmware/cmdline.txt; then
-        info "Switching to cgroup v1 in /boot/firmware/cmdline.txt"
-        sed -i.bak 's/$/ systemd.unified_cgroup_hierarchy=false/' /boot/firmware/cmdline.txt
-        touch /var/run/reboot-required
-    fi
-elif [ -f /boot/armbianEnv.txt ]
-then
-    if ! grep -q "systemd.unified_cgroup_hierarchy=false" /boot/armbianEnv.txt; then
-        info "Switching to cgroup v1 in /boot/armbianEnv.txt"
-        sed -i.bak 's/$/ systemd.unified_cgroup_hierarchy=false/' /boot/armbianEnv.txt
-        touch /var/run/reboot-required
-    fi	
-elif [ -f /boot/uEnv.txt ]
-then
-    if ! grep -q "systemd.unified_cgroup_hierarchy=false" /boot/uEnv.txt; then
-        info "To switch to cgroup v1 in /boot/uEnv.txt"
-        warn " add 'systemd.unified_cgroup_hierarchy=false' to /boot/uEnv.txt "
-        warn "and 'sudo update-initramfs -u'"
-        touch /var/run/reboot-required
-    fi
-elif [ -f /boot/boot.cmd ]
-then
-    if ! grep -q "systemd.unified_cgroup_hierarchy=false" /boot/boot.cmd; then
-        info "To switch to cgroup v1 in /boot/boot.cmd"
-        warn "add 'systemd.unified_cgroup_hierarchy=false' to /boot/boot.cmd "
-        warn "in the row with 'setenv bootargs' "
-        warn "and then: sudo mkimage -C none -A arm -T script -d /boot/boot.cmd /boot/boot.scr "
-        touch /var/run/reboot-required
-    fi
-elif [ -f /boot/armbianEnv.txt ]
-then
-    if ! grep -q "systemd.unified_cgroup_hierarchy=false" /boot/armbianEnv.txt; then
-        info "To switch to cgroup v1 in /boot/armbianEnv.txt"
-        warn " add 'systemd.unified_cgroup_hierarchy=false' to /boot/armbianEnv.txt "
-        warn "and 'sudo update-initramfs -u'"
-        touch /var/run/reboot-required
-    fi	
-else
-    warn "Could not find /etc/default/grub or /boot/firmware/cmdline.txt"
-    warn "or /boot/armbianEnv.txt or /boot/uEnv.txt or /boot/armbianEnv.txt"
-    warn " failed to switch to cgroup v1"
-fi
-info "Within a few minutes you will be able to reach Home Assistant at:"
+info "#################################################"
+info "Switch to cgroup v1 in /etc/default/grub"        
+info "add systemd.unified_cgroup_hierarchy=false in your grub" 
+warn "then -> /etc/default/grub update-grub"
+warn "A reboot is required to apply changes to grub."
+info "#################################################"
+info "Switch to cgroup v1 in /boot/firmware/cmdline.txt"       
+info "add systemd.unified_cgroup_hierarchy=false in your /boot/firmware/cmdline.txt"
+warn "then -> sudo update-initramfs -u"
+warn "A reboot is required to apply changes to initramfs."
+info "#################################################"
+info "Switch to cgroup v1 in  /boot/armbianEnv.txt"
+info "add extraargs=apparmor=1 security=apparmor in your /boot/armbianEnv.txt"
+warn "then -> sudo update-initramfs -u"
+warn "A reboot is required to apply changes to initramfs."
+info "#################################################"
+info "To switch to cgroup v1 in /boot/uEnv.txt"
+info "add extraargs=apparmor=1 security=apparmor in your /boot/uEnv.txt"
+warn "then -> sudo update-initramfs -u"
+warn "A reboot is required to apply changes to initramfs."
+info "#################################################"
+info "To switch to cgroup v1 in /boot/boot.cmd"
+info "add 'systemd.unified_cgroup_hierarchy=false' to /boot/boot.cmd"
+info "in the row with 'setenv bootargs' "
+warn "and then -> sudo mkimage -C none -A arm -T script -d /boot/boot.cmd /boot/boot.scr"
+warn "A reboot is required to apply changes."
+info "#################################################"
+
+info "Within a 10-20 minutes you will be able to reach Home Assistant at:"
 info "http://homeassistant.local:8123 or using the IP address of your"
 info "machine: http://${IP_ADDRESS}:8123"
+info "HA Observer"
+info "machine: http://${IP_ADDRESS}:4357"
+info "check the creation of containers with sudo docker ps -a"
 if [ -f /var/run/reboot-required ]
 then
     warn "A reboot is required to apply changes to grub."
