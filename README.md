@@ -3,8 +3,8 @@
 # Install Home Assistant Supervised with no Architecture Check (no exit on errors)
 This installation method is for advanced users only, use at your own risk!
 
-## Instructions for installing Home Assistant Supervised on TV box or Raspberry Pi 5 Debian 12 Bookword
-## can be found [here](https://travis90x.altervista.org/home-assistant-supervised-on-armbian-tvbox/)
+### Instructions for installing Home Assistant Supervised on TV box or Raspberry Pi 5 Debian 12 Bookword
+### can be found [here](https://travis90x.altervista.org/home-assistant-supervised-on-armbian-tvbox/)
 
 ### Tested on TV Box X96 Mini (SoC ARM Rockchip rk322x armv7l) using qemuarm
 with Armbian_23.5.0-trunk.138_Rk322x-box_bookworm_edge_6.3.1.img (Debian 12)
