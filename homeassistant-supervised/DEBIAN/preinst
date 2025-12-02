@@ -7,29 +7,35 @@ function error { echo -e "\e[31m[error] $*\e[39m"; exit 1; }
 warn ""
 warn "Installation of Home Assistant Supervised by Travis90x"
 warn "you can try to install on every platform"
-warn "like Armbian on TV box."
+warn "like Armbian on TV box or Raspberry Pi 5 Bookworn - Debian 12."
 warn ""
 
 # Check if we are running on a supported OS
 BYPASS_OS_CHECK=${BYPASS_OS_CHECK:-false}
 supported_os=("Debian GNU/Linux 12 (bookworm)")
+supported_os_id="debian"
+supported_os_version_id=("13")
 
+source /etc/os-release
 CURRENT_OS=$(lsb_release -d | awk -F"\t" '{print $2}')
 os_supported=false
 
-for os in "${supported_os[@]}"; do
-    if [[ $os == "$CURRENT_OS" ]]; then
-        os_supported=true
-        break
-    fi
-done
+if [[ "$ID" == "$supported_os_id" ]]; then
+    for version in "${supported_os_version_id[@]}"; do
+        if [[ "$VERSION_ID" == "$version" ]]; then
+            os_supported=true
+            break
+        fi
+    done
+fi
 
 if [[ $os_supported == false ]]; then
     if [[ $BYPASS_OS_CHECK != "true" ]]; then
-        warn "${CURRENT_OS} is not supported, but the installation run anyway!"
+        warn "${PRETTY_NAME} is not supported!"
+		warn "${CURRENT_OS} is not supported, but the installation run anyway!"
     fi
     warn "Bypassing OS check..."
-    warn "${CURRENT_OS} is not officially supported!"
+    warn "${PRETTY_NAME} ${CURRENT_OS} is not officially supported!"
     warn "Please DO NOT report issues regarding this OS on official repo!"
 fi
 
