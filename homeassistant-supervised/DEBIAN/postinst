@@ -17,7 +17,7 @@ SERVICE_NM="NetworkManager.service"
 URL_CHECK_ONLINE="https://checkonline.home-assistant.io/online.txt"
 URL_VERSION="https://version.home-assistant.io/stable.json"
 HASSIO_VERSION=$(curl -s ${URL_VERSION} | jq -e -r '.supervisor')
-URL_APPARMOR_PROFILE="https://version.home-assistant.io/apparmor.txt"
+URL_APPARMOR_PROFILE="https://version.home-assistant.io/apparmor_stable.txt"
 
 # reload systemd
 info "Reload systemd"
@@ -119,10 +119,17 @@ case ${ARCH} in
         error "${ARCH} unknown!"
     ;;
 esac
+
 PREFIX=${PREFIX:-/usr}
 SYSCONFDIR=${SYSCONFDIR:-/etc}
+# DEFAULT_DATA_SHARE=/var/lib/homeassistant
+# DATA_SHARE=${DATA_SHARE:-$DEFAULT_DATA_SHARE}
 DATA_SHARE=${DATA_SHARE:-$PREFIX/share/hassio}
 CONFIG="${SYSCONFDIR}/hassio.json"
+# if [ -f "${CONFIG}" ]; then
+    # Using data share of existing configuration
+#     DATA_SHARE=$(jq -r --arg default "$DEFAULT_DATA_SHARE" '.data // $default' "$CONFIG")
+# fi
 cat > "${CONFIG}" <<- EOF
 {
     "supervisor": "${HASSIO_DOCKER}",
@@ -164,41 +171,61 @@ systemctl start hassio-supervisor.service
 info "Installing the 'ha' cli"
 chmod a+x "${PREFIX}/bin/ha"
 
-# Switch to cgroup v1
+# Switch to cgroup v2
+if [ -f /etc/default/grub ]
+then
+    if grep -q "systemd.unified_cgroup_hierarchy=false" /etc/default/grub; then
+        info "Switching to cgroup v2"
+        cp /etc/default/grub /etc/default/grub.bak
+        sed -i 's/systemd\.unified_cgroup_hierarchy=false //' /etc/default/grub
+        update-grub
+        touch /var/run/reboot-required
+    fi
+elif [ -f /boot/firmware/cmdline.txt ]
+then
+    if grep -q "systemd.unified_cgroup_hierarchy=false" /boot/firmware/cmdline.txt; then
+        info "Switching to cgroup v2"
+        sed -i.bak 's/ systemd\.unified_cgroup_hierarchy=false//' /boot/firmware/cmdline.txt
+        touch /var/run/reboot-required
+    fi
+else
+    warn "Could not find /etc/default/grub or /boot/firmware/cmdline.txt failed to switch to cgroup v1"
+fi
+
 info "#################################################"
-info "Switch to cgroup v1 in /etc/default/grub"        
+info "Switch to cgroup v1/v2 in /etc/default/grub"        
 info "add systemd.unified_cgroup_hierarchy=false in your grub" 
 warn "then -> /etc/default/grub update-grub"
 warn "A reboot is required to apply changes to grub."
 info "#################################################"
-info "Switch to cgroup v1 in /boot/firmware/cmdline.txt"       
+info "Switch to cgroup v1/v2 in /boot/firmware/cmdline.txt"
 info "add systemd.unified_cgroup_hierarchy=false in your /boot/firmware/cmdline.txt"
 warn "then -> sudo update-initramfs -u"
 warn "A reboot is required to apply changes to initramfs."
 info "#################################################"
-info "Switch to cgroup v1 in  /boot/armbianEnv.txt"
+info "Switch to cgroup v1/v2 in  /boot/armbianEnv.txt"
 info "add extraargs=apparmor=1 security=apparmor in your /boot/armbianEnv.txt"
 warn "then -> sudo update-initramfs -u"
 warn "A reboot is required to apply changes to initramfs."
 info "#################################################"
-info "To switch to cgroup v1 in /boot/uEnv.txt"
+info "To switch to cgroup v1/v2 in /boot/uEnv.txt"
 info "add extraargs=apparmor=1 security=apparmor in your /boot/uEnv.txt"
 warn "then -> sudo update-initramfs -u"
 warn "A reboot is required to apply changes to initramfs."
 info "#################################################"
-info "To switch to cgroup v1 in /boot/boot.cmd"
+info "To switch to cgroup v1/v2 in /boot/boot.cmd"
 info "add 'systemd.unified_cgroup_hierarchy=false' to /boot/boot.cmd"
 info "in the row with 'setenv bootargs' "
 warn "and then -> sudo mkimage -C none -A arm -T script -d /boot/boot.cmd /boot/boot.scr"
 warn "A reboot is required to apply changes."
 info "#################################################"
-
 info "Within a 10-20 minutes you will be able to reach Home Assistant at:"
 info "http://homeassistant.local:8123 or using the IP address of your"
 info "machine: http://${IP_ADDRESS}:8123"
 info "HA Observer"
 info "machine: http://${IP_ADDRESS}:4357"
-info "check the creation of containers with sudo docker ps -a"
+info "check the creation of containers with sudo docker ps -a"				  
+
 if [ -f /var/run/reboot-required ]
 then
     warn "A reboot is required to apply changes to grub."
