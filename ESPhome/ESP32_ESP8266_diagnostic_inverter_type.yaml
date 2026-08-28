@@ -1,480 +1,221 @@
-```yaml
 # =====================================================================
-# INVERTER UART DIAGNOSTIC TEST
-# Heltec WiFi Kit 32 V3
+#  HELTEC DIAGNOSTIC - the 9 PI30 commands, one at a time
+#  Heltec WiFi Kit 32 V3
 #
-# UART:
-#   ESP32 GPIO3 (TX) -> MAX3232 TTL RX
-#   ESP32 GPIO5 (RX) <- MAX3232 TTL TX
+#  FIXES OVER THE ORIGINAL:
+#    - QID  had CRC D5 EA -> corrected to D6 EA
+#    - QVFW had CRC 25 A5 -> corrected to 62 99
+#      (with a bad CRC the inverter silently discards the frame)
+#    - baud rate selectable at runtime, no reflashing needed
+#    - one button per command, to try them individually
+#    - every reply printed in both HEX and ASCII
 #
-# RS232 side:
-#   RJ45 pin 1 -> MAX3232 RS232 input/output according to module marking
-#   RJ45 pin 2 -> MAX3232 RS232 input/output according to module marking
-#   RJ45 pin 8 -> GND
-#   RJ45 pin 4 -> DO NOT CONNECT
-#
-# Protocol tested:
-#   QPI
-#   QID
-#   QVFW
-#   QPIRI
-#   QDI
-#   QFLAG
-#   QMOD
-#   QPIGS
-#   QPIWS
-#
-# Baud rate:
-#   2400 8N1
-#
-# The test runs continuously every 30 seconds.
+#  HOW TO USE
+#    1. Pick the baud rate from the dropdown (start at 2400)
+#    2. Press a button, or turn on "Auto test"
+#    3. Look for a "***** n bytes *****" line in the log.
+#       Even "(NAK" is a success: the inverter can hear you.
+#    4. If silent at every baud rate, try swapping TX and RX.
+#   WIRING
+#     ESP GPIO5 (TX) -> MAX3232 pad "Node RX"
+#     ESP GPIO3 (RX) <- MAX3232 pad "Node Tx"
+#     3V3 -> "Node 3.3V"        GND -> "Node Gnd"
+#     RJ45 pin 1 (inverter TX) -> pad "RJ45 Pin 1"
+#     RJ45 pin 2 (inverter RX) -> pad "RJ45 Pin 2"
+#     RJ45 pin 8 (GND)         -> pad "RJ45 Pin 8"
+#     RJ45 pin 4 (+12V)        -> DO NOT CONNECT
 # =====================================================================
-
 
 esphome:
-  name: "heltec-inverter"
-  friendly_name: "Heltec Inverter"
-
-
-# =====================================================================
-# ESP32
-# =====================================================================
+  name: "heltec-diagnostic"
+  friendly_name: Heltec Diagnostic
 
 esp32:
   board: heltec_wifi_kit_32_V3
   variant: esp32s3
-
   framework:
     type: arduino
-
-
-# =====================================================================
-# LOGGER
-# =====================================================================
 
 logger:
   level: DEBUG
   baud_rate: 0
 
-
-# =====================================================================
-# HOME ASSISTANT API
-# =====================================================================
-
 api:
   encryption:
     key: !secret api_key_heltec_v3
-
   reboot_timeout: 0s
-
-
-# =====================================================================
-# OTA
-# =====================================================================
 
 ota:
   - platform: esphome
 
-
-# =====================================================================
-# WIFI
-# =====================================================================
-
 wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
-
   manual_ip:
     static_ip: 192.168.1.125
     gateway: 192.168.1.1
     subnet: 255.255.255.0
     dns1: 8.8.8.8
     dns2: 192.168.1.1
-
   power_save_mode: none
-
   ap:
-    ssid: "Heltec-Inverter"
+    ssid: "Heltec-Diag"
     password: !secret wifi_hotspot_password
-
 
 captive_portal:
 
-
-# =====================================================================
-# UART
-# =====================================================================
-
 uart:
-
   id: inverter_uart
-
-  # ESP32 TX -> MAX3232 TTL RX
-  tx_pin: GPIO3
-
-  # MAX3232 TTL TX -> ESP32 RX
-  rx_pin: GPIO5
-
+  tx_pin: GPIO5
+  rx_pin: GPIO3
   baud_rate: 2400
-
   data_bits: 8
   parity: NONE
   stop_bits: 1
-
   debug:
-
     direction: RX
-
-    dummy_receiver: false
-
+    dummy_receiver: true
     after:
       delimiter: "\r"
-      timeout: 500ms
-
+      timeout: 400ms
     sequence:
-
       - lambda: |-
+          if (bytes.empty()) return;
 
-          if (bytes.empty()) {
-            return;
-          }
-
-          ESP_LOGI(
-            "UART_RX",
-            "Received %d bytes",
-            (int) bytes.size()
-          );
-
-          // -----------------------------------------------------------
-          // ASCII representation
-          // -----------------------------------------------------------
-
-          std::string ascii;
-
+          std::string ascii, hex;
+          char b[8];
           for (uint8_t c : bytes) {
-
-            if (c >= 0x20 && c <= 0x7E) {
-              ascii += static_cast<char>(c);
-            }
-
-            else if (c == '\r') {
-              ascii += "\\r";
-            }
-
-            else if (c == '\n') {
-              ascii += "\\n";
-            }
-
-            else {
-              ascii += ".";
-            }
+            sprintf(b, "%02X ", c);
+            hex += b;
+            if (c >= 0x20 && c <= 0x7E) ascii += (char) c;
+            else if (c == '\r')         ascii += "\\r";
+            else if (c == '\n')         ascii += "\\n";
+            else                        ascii += ".";
           }
 
-          ESP_LOGI(
-            "UART_RX",
-            "ASCII: %s",
-            ascii.c_str()
-          );
+          ESP_LOGI("UART_RX", "***** %d bytes *****", (int) bytes.size());
+          ESP_LOGI("UART_RX", "HEX    %s", hex.c_str());
+          ESP_LOGI("UART_RX", "ASCII  %s", ascii.c_str());
 
-
-          // -----------------------------------------------------------
-          // HEX representation
-          // -----------------------------------------------------------
-
-          std::string hex;
-
-          char buffer[4];
-
-          for (size_t i = 0; i < bytes.size(); i++) {
-
-            snprintf(
-              buffer,
-              sizeof(buffer),
-              "%02X",
-              bytes[i]
-            );
-
-            hex += buffer;
-
-            if (i + 1 < bytes.size()) {
-              hex += " ";
-            }
+          // Automatic protocol family recognition
+          if (bytes.size() >= 2 && bytes[0] == '(') {
+            std::string s;
+            for (uint8_t c : bytes) { if (c == 0x0D) break; if (c >= 0x20 && c <= 0x7E) s += (char) c; }
+            if (s.rfind("(NAK", 0) == 0)
+              ESP_LOGW("UART_RX", ">>> NAK: the inverter REPLIES but rejects this command.");
+            else
+              ESP_LOGW("UART_RX", ">>> VALID PI30-style reply: %s", s.c_str());
+          } else if (bytes.size() >= 2 && bytes[0] == '^') {
+            ESP_LOGW("UART_RX", ">>> PI17 / PI18 style reply");
+          } else if (bytes.size() >= 3 && bytes[1] == 0x03) {
+            ESP_LOGW("UART_RX", ">>> MODBUS style reply, slave 0x%02X", bytes[0]);
           }
 
-          ESP_LOGI(
-            "UART_RX",
-            "HEX: %s",
-            hex.c_str()
-          );
-
-
-# =====================================================================
-# INVERTER COMMAND TEST
-# =====================================================================
+globals:
+  - id: g_auto
+    type: bool
+    restore_value: no
+    initial_value: "false"
 
 script:
-
-  - id: test_inverter_commands
-
+  - id: send
     mode: single
-
+    parameters:
+      name: string
+      data: std::vector<uint8_t>
     then:
-
-      # ---------------------------------------------------------------
-      # Clear RX buffer
-      # ---------------------------------------------------------------
-
       - lambda: |-
-
-          while (id(inverter_uart).available()) {
-
-            uint8_t c;
-
-            id(inverter_uart).read_byte(&c);
-          }
-
-
-      - logger.log:
-          level: INFO
-          format: "============================================"
-
-      - logger.log:
-          level: INFO
-          format: "INVERTER UART DIAGNOSTIC TEST"
-
-      - logger.log:
-          level: INFO
-          format: "BAUD RATE: 2400"
-
-      - logger.log:
-          level: INFO
-          format: "TX GPIO: GPIO3"
-
-      - logger.log:
-          level: INFO
-          format: "RX GPIO: GPIO5"
-
-      - logger.log:
-          level: INFO
-          format: "============================================"
-
-
-      # ===============================================================
-      # QPI
-      # ===============================================================
-
-      - logger.log:
-          level: INFO
-          format: "[1/9] Sending QPI"
-
-      - uart.write:
-          data:
-            - 0x51
-            - 0x50
-            - 0x49
-            - 0xBE
-            - 0xAC
-            - 0x0D
-
+          uint8_t c;
+          while (id(inverter_uart).available()) id(inverter_uart).read_byte(&c);
+          id(inverter_uart).write_array(data.data(), data.size());
+          id(inverter_uart).flush();
+          std::string hex;
+          char b[8];
+          for (uint8_t x : data) { sprintf(b, "%02X ", x); hex += b; }
+          ESP_LOGI("TX", "%-6s -> %s", name.c_str(), hex.c_str());
       - delay: 1500ms
 
+  - id: full_test
+    mode: single
+    then:
+      - logger.log: "=========== PI30 DIAGNOSTIC TEST ==========="
+      - script.execute: {id: send, name: "QPI",   data: !lambda "return {0x51,0x50,0x49,0xBE,0xAC,0x0D};"}
+      - script.wait: send
+      - script.execute: {id: send, name: "QID",   data: !lambda "return {0x51,0x49,0x44,0xD6,0xEA,0x0D};"}
+      - script.wait: send
+      - script.execute: {id: send, name: "QVFW",  data: !lambda "return {0x51,0x56,0x46,0x57,0x62,0x99,0x0D};"}
+      - script.wait: send
+      - script.execute: {id: send, name: "QPIRI", data: !lambda "return {0x51,0x50,0x49,0x52,0x49,0xF8,0x54,0x0D};"}
+      - script.wait: send
+      - script.execute: {id: send, name: "QDI",   data: !lambda "return {0x51,0x44,0x49,0x71,0x1B,0x0D};"}
+      - script.wait: send
+      - script.execute: {id: send, name: "QFLAG", data: !lambda "return {0x51,0x46,0x4C,0x41,0x47,0x98,0x74,0x0D};"}
+      - script.wait: send
+      - script.execute: {id: send, name: "QMOD",  data: !lambda "return {0x51,0x4D,0x4F,0x44,0x49,0xC1,0x0D};"}
+      - script.wait: send
+      - script.execute: {id: send, name: "QPIGS", data: !lambda "return {0x51,0x50,0x49,0x47,0x53,0xB7,0xA9,0x0D};"}
+      - script.wait: send
+      - script.execute: {id: send, name: "QPIWS", data: !lambda "return {0x51,0x50,0x49,0x57,0x53,0xB4,0xDA,0x0D};"}
+      - script.wait: send
+      - logger.log: "=========== TEST COMPLETE ==========="
 
-      # ===============================================================
-      # QID
-      # ===============================================================
+select:
+  - platform: template
+    name: "Diag baud rate"
+    id: sel_baud
+    optimistic: true
+    initial_option: "2400"
+    options: ["1200", "2400", "4800", "9600", "19200", "38400"]
+    set_action:
+      - lambda: |-
+          int b = atoi(x.c_str());
+          id(inverter_uart).set_baud_rate(b);
+          id(inverter_uart).load_settings(false);
+          ESP_LOGI("TX", "===== BAUD RATE now %d =====", b);
 
-      - logger.log:
-          level: INFO
-          format: "[2/9] Sending QID"
+button:
+  - platform: template
+    name: "Diag run all commands"
+    on_press: {script.execute: full_test}
+  - platform: template
+    name: "Diag QPI"
+    on_press: {script.execute: {id: send, name: "QPI",   data: !lambda "return {0x51,0x50,0x49,0xBE,0xAC,0x0D};"}}
+  - platform: template
+    name: "Diag QID"
+    on_press: {script.execute: {id: send, name: "QID",   data: !lambda "return {0x51,0x49,0x44,0xD6,0xEA,0x0D};"}}
+  - platform: template
+    name: "Diag QVFW"
+    on_press: {script.execute: {id: send, name: "QVFW",  data: !lambda "return {0x51,0x56,0x46,0x57,0x62,0x99,0x0D};"}}
+  - platform: template
+    name: "Diag QPIRI"
+    on_press: {script.execute: {id: send, name: "QPIRI", data: !lambda "return {0x51,0x50,0x49,0x52,0x49,0xF8,0x54,0x0D};"}}
+  - platform: template
+    name: "Diag QDI"
+    on_press: {script.execute: {id: send, name: "QDI",   data: !lambda "return {0x51,0x44,0x49,0x71,0x1B,0x0D};"}}
+  - platform: template
+    name: "Diag QFLAG"
+    on_press: {script.execute: {id: send, name: "QFLAG", data: !lambda "return {0x51,0x46,0x4C,0x41,0x47,0x98,0x74,0x0D};"}}
+  - platform: template
+    name: "Diag QMOD"
+    on_press: {script.execute: {id: send, name: "QMOD",  data: !lambda "return {0x51,0x4D,0x4F,0x44,0x49,0xC1,0x0D};"}}
+  - platform: template
+    name: "Diag QPIGS"
+    on_press: {script.execute: {id: send, name: "QPIGS", data: !lambda "return {0x51,0x50,0x49,0x47,0x53,0xB7,0xA9,0x0D};"}}
+  - platform: template
+    name: "Diag QPIWS"
+    on_press: {script.execute: {id: send, name: "QPIWS", data: !lambda "return {0x51,0x50,0x49,0x57,0x53,0xB4,0xDA,0x0D};"}}
 
-      - uart.write:
-          data:
-            - 0x51
-            - 0x49
-            - 0x44
-            - 0xD5
-            - 0xEA
-            - 0x0D
-
-      - delay: 1500ms
-
-
-      # ===============================================================
-      # QVFW
-      # ===============================================================
-
-      - logger.log:
-          level: INFO
-          format: "[3/9] Sending QVFW"
-
-      - uart.write:
-          data:
-            - 0x51
-            - 0x56
-            - 0x46
-            - 0x57
-            - 0x25
-            - 0xA5
-            - 0x0D
-
-      - delay: 1500ms
-
-
-      # ===============================================================
-      # QPIRI
-      # ===============================================================
-
-      - logger.log:
-          level: INFO
-          format: "[4/9] Sending QPIRI"
-
-      - uart.write:
-          data:
-            - 0x51
-            - 0x50
-            - 0x49
-            - 0x52
-            - 0x49
-            - 0xF8
-            - 0x54
-            - 0x0D
-
-      - delay: 1500ms
-
-
-      # ===============================================================
-      # QDI
-      # ===============================================================
-
-      - logger.log:
-          level: INFO
-          format: "[5/9] Sending QDI"
-
-      - uart.write:
-          data:
-            - 0x51
-            - 0x44
-            - 0x49
-            - 0x71
-            - 0x1B
-            - 0x0D
-
-      - delay: 1500ms
-
-
-      # ===============================================================
-      # QFLAG
-      # ===============================================================
-
-      - logger.log:
-          level: INFO
-          format: "[6/9] Sending QFLAG"
-
-      - uart.write:
-          data:
-            - 0x51
-            - 0x46
-            - 0x4C
-            - 0x41
-            - 0x47
-            - 0x98
-            - 0x74
-            - 0x0D
-
-      - delay: 1500ms
-
-
-      # ===============================================================
-      # QMOD
-      # ===============================================================
-
-      - logger.log:
-          level: INFO
-          format: "[7/9] Sending QMOD"
-
-      - uart.write:
-          data:
-            - 0x51
-            - 0x4D
-            - 0x4F
-            - 0x44
-            - 0x49
-            - 0xC1
-            - 0x0D
-
-      - delay: 1500ms
-
-
-      # ===============================================================
-      # QPIGS
-      # ===============================================================
-
-      - logger.log:
-          level: INFO
-          format: "[8/9] Sending QPIGS"
-
-      - uart.write:
-          data:
-            - 0x51
-            - 0x50
-            - 0x49
-            - 0x47
-            - 0x53
-            - 0xB7
-            - 0xA9
-            - 0x0D
-
-      - delay: 1500ms
-
-
-      # ===============================================================
-      # QPIWS
-      # ===============================================================
-
-      - logger.log:
-          level: INFO
-          format: "[9/9] Sending QPIWS"
-
-      - uart.write:
-          data:
-            - 0x51
-            - 0x50
-            - 0x49
-            - 0x57
-            - 0x53
-            - 0xB4
-            - 0xDA
-            - 0x0D
-
-      - delay: 1500ms
-
-
-      # ===============================================================
-      # TEST COMPLETE
-      # ===============================================================
-
-      - logger.log:
-          level: INFO
-          format: "============================================"
-
-      - logger.log:
-          level: INFO
-          format: "DIAGNOSTIC TEST COMPLETE"
-
-      - logger.log:
-          level: INFO
-          format: "============================================"
-
-
-# =====================================================================
-# AUTOMATIC TEST
-# =====================================================================
+switch:
+  - platform: template
+    name: "Diag auto test"
+    optimistic: true
+    restore_mode: ALWAYS_OFF
+    turn_on_action:  {lambda: "id(g_auto) = true;"}
+    turn_off_action: {lambda: "id(g_auto) = false;"}
 
 interval:
-
   - interval: 30s
-
     then:
-
-      - script.execute: test_inverter_commands
-```
+      - if:
+          condition: {lambda: "return id(g_auto);"}
+          then: [{script.execute: full_test}]
