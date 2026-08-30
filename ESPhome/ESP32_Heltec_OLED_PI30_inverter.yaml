@@ -1,0 +1,2905 @@
+# =====================================================================
+# HELTEC INVERTER PI30 - read and control
+# Heltec WiFi Kit 32 V3
+#
+# Display:
+#   PAGE 1 = schermata principale
+#   PAGE 2 = WiFi
+#   PAGE 3 = Batteria / inverter
+#   PAGE 4 = Carica / scarica batteria
+#   PAGE 5 = Parametri batteria
+#   PAGE 6 = Grafico tensione batteria
+#
+# GPIO inverter:
+#   GPIO5 = TX
+#   GPIO3 = RX
+#
+# MAX3232:
+#   ESP GPIO5 (TX) -> MAX3232 "Node RX"
+#   ESP GPIO3 (RX) <- MAX3232 "Node Tx"
+#   3V3 -> "Node 3.3V"
+#   GND -> "Node Gnd"
+#
+# RJ45 inverter:
+#   pin 1 = TX
+#   pin 2 = RX
+#   pin 8 = GND
+#   pin 4 = +12V -> NON COLLEGARE
+# =====================================================================
+
+
+esphome:
+  name: "heltec-inverter"
+  friendly_name: Heltec PI30 Display
+
+
+esp32:
+  board: heltec_wifi_kit_32_V3
+  variant: esp32s3
+  framework:
+    type: arduino
+
+
+logger:
+  level: DEBUG
+  baud_rate: 0
+
+
+api:
+  encryption:
+    key: !secret api_key_heltec_v3
+  reboot_timeout: 0s
+
+
+ota:
+  - platform: esphome
+
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+  manual_ip:
+    static_ip: 192.168.1.125
+    gateway: 192.168.1.1
+    subnet: 255.255.255.0
+    dns1: 8.8.8.8
+    dns2: 192.168.1.1
+
+  power_save_mode: none
+
+  ap:
+    ssid: "Heltec-PI30"
+    password: !secret wifi_hotspot_password
+
+
+captive_portal:
+
+
+# =====================================================================
+# UART INVERTER
+# =====================================================================
+
+uart:
+
+  - id: uart_0
+
+    tx_pin: GPIO5
+    rx_pin: GPIO3
+
+    baud_rate: 2400
+    data_bits: 8
+    parity: NONE
+    stop_bits: 1
+
+
+# =====================================================================
+# GLOBAL
+# =====================================================================
+
+globals:
+
+  - id: g_polling
+    type: bool
+    restore_value: no
+    initial_value: "false"
+
+
+# =====================================================================
+# SCRIPT - INVIO COMANDI PI30
+# =====================================================================
+
+script:
+
+  # -------------------------------------------------------------------
+  # Send a PI30 command
+  # CRC-16/XMODEM computed at runtime
+  # -------------------------------------------------------------------
+
+  - id: send_cmd
+    mode: queued
+    max_runs: 20
+
+    parameters:
+      cmd: string
+
+    then:
+
+      - lambda: |-
+          uint8_t c;
+
+          while (id(uart_0).available())
+            id(uart_0).read_byte(&c);
+
+
+          std::vector<uint8_t> f(cmd.begin(), cmd.end());
+
+
+          // CRC-16/XMODEM
+          uint16_t crc = 0;
+
+          for (auto b : f) {
+
+            crc ^= (uint16_t) b << 8;
+
+            for (int i = 0; i < 8; i++)
+              crc = (crc & 0x8000)
+                ? ((crc << 1) ^ 0x1021)
+                : (crc << 1);
+          }
+
+
+          uint8_t hi = crc >> 8;
+          uint8_t lo = crc & 0xFF;
+
+
+          // PI30 rule:
+          // 0x28 / 0x0D / 0x0A must be incremented
+
+          if (hi == 0x28 || hi == 0x0D || hi == 0x0A)
+            hi++;
+
+          if (lo == 0x28 || lo == 0x0D || lo == 0x0A)
+            lo++;
+
+
+          f.push_back(hi);
+          f.push_back(lo);
+          f.push_back(0x0D);
+
+
+          id(uart_0).write_array(f.data(), f.size());
+          id(uart_0).flush();
+
+
+          std::string hex;
+          char b[8];
+
+          for (auto x : f) {
+
+            sprintf(b, "%02X ", x);
+            hex += b;
+          }
+
+
+          ESP_LOGI(
+            "PI30",
+            "TX  \"%s\"  ->  %s",
+            cmd.c_str(),
+            hex.c_str()
+          );
+
+
+      - delay: 1500ms
+
+
+      - lambda: |-
+          std::vector<uint8_t> d;
+          uint8_t c;
+
+
+          while (id(uart_0).available()) {
+
+            if (id(uart_0).read_byte(&c))
+              d.push_back(c);
+          }
+
+
+          if (d.empty()) {
+
+            ESP_LOGW("PI30", "RX  no reply");
+            return;
+          }
+
+
+          std::string hex;
+          std::string txt;
+          char b[8];
+
+
+          for (auto x : d) {
+
+            sprintf(b, "%02X ", x);
+            hex += b;
+
+            txt += (x >= 0x20 && x <= 0x7E)
+              ? (char) x
+              : '.';
+          }
+
+
+          ESP_LOGI(
+            "PI30",
+            "RX  %d bytes",
+            (int) d.size()
+          );
+
+          ESP_LOGI(
+            "PI30",
+            "RX HEX    %s",
+            hex.c_str()
+          );
+
+          ESP_LOGI(
+            "PI30",
+            "RX ASCII  %s",
+            txt.c_str()
+          );
+
+
+          // Clean text:
+          // CRC and CR stripped
+
+          std::string t;
+
+          for (auto x : d) {
+
+            if (x == 0x0D)
+              break;
+
+            if (x >= 0x20 && x <= 0x7E)
+              t += (char) x;
+          }
+
+
+          id(ts_reply).publish_state(t);
+
+
+          if (t.rfind("(NAK", 0) == 0) {
+
+            ESP_LOGW(
+              "PI30",
+              ">>> NAK: command rejected, but baud rate and wiring are OK."
+            );
+
+            return;
+          }
+
+
+          // ------------------------------------------------------------
+          // QPIGS parsing
+          // ------------------------------------------------------------
+
+          if (
+            cmd == "QPIGS" &&
+            t.size() >= 20 &&
+            t[0] == '('
+          ) {
+
+            std::vector<float> v;
+            std::string tok;
+
+
+            for (size_t i = 1; i <= t.size(); i++) {
+
+              if (
+                i == t.size() ||
+                t[i] == ' '
+              ) {
+
+                if (!tok.empty()) {
+
+                  v.push_back(
+                    atof(tok.c_str())
+                  );
+
+                  tok.clear();
+                }
+
+              } else {
+
+                tok += t[i];
+              }
+            }
+
+
+            ESP_LOGI(
+              "PI30",
+              "QPIGS: %d fields",
+              (int) v.size()
+            );
+
+
+            if (v.size() >= 17) {
+
+              id(s_grid_v).publish_state(v[0]);
+              id(s_grid_hz).publish_state(v[1]);
+
+              id(s_out_v).publish_state(v[2]);
+              id(s_out_hz).publish_state(v[3]);
+
+              id(s_out_va).publish_state(v[4]);
+              id(s_out_w).publish_state(v[5]);
+
+              id(s_load).publish_state(v[6]);
+
+              id(s_bus_v).publish_state(v[7]);
+              id(s_batt_v).publish_state(v[8]);
+
+              id(s_batt_chg).publish_state(v[9]);
+
+              id(s_soc).publish_state(v[10]);
+              id(s_temp).publish_state(v[11]);
+
+              id(s_pv_a).publish_state(v[12]);
+              id(s_pv_v).publish_state(v[13]);
+
+              id(s_batt_dis).publish_state(v[15]);
+
+
+              if (v.size() >= 20)
+                id(s_pv_w).publish_state(v[19]);
+
+
+              // Battery current:
+              // charge current - discharge current
+
+              float a = v[9] - v[15];
+
+              id(s_batt_a).publish_state(a);
+
+
+              // Battery power
+
+              id(s_batt_w).publish_state(
+                a * v[8]
+              );
+
+
+              ESP_LOGI(
+                "PI30",
+                "Grid %.1fV/%.1fHz | Out %.1fV %.0fW %.0f%% | Batt %.2fV %.1fA %.0f%%",
+                v[0],
+                v[1],
+                v[2],
+                v[5],
+                v[6],
+                v[8],
+                a,
+                v[10]
+              );
+            }
+
+            return;
+          }
+
+
+  # ===================================================================
+  # POLLING INVERTER
+  # ===================================================================
+
+  - id: poll_inverter
+    mode: single
+
+    then:
+
+      - script.execute:
+          id: send_cmd
+          cmd: "QPIGS"
+
+      - script.wait: send_cmd
+
+      - script.execute:
+          id: send_cmd
+          cmd: "QMOD"
+
+      - script.wait: send_cmd
+
+
+  # ===================================================================
+  # PARAMETRIC COMMANDS
+  # ===================================================================
+
+  - id: send_param_cmd
+    mode: queued
+    max_runs: 20
+
+    parameters:
+      prefix: string
+      value: string
+
+    then:
+
+      - lambda: |-
+          uint8_t c;
+
+          while (id(uart_0).available())
+            id(uart_0).read_byte(&c);
+
+
+          char buf[64];
+
+
+          // Build command:
+          // prefix + value
+
+          sprintf(
+            buf,
+            "%s%s",
+            prefix.c_str(),
+            value.c_str()
+          );
+
+
+          std::vector<uint8_t> f(
+            buf,
+            buf + strlen(buf)
+          );
+
+
+          // CRC-16/XMODEM
+
+          uint16_t crc = 0;
+
+          for (auto b : f) {
+
+            crc ^= (uint16_t) b << 8;
+
+            for (int i = 0; i < 8; i++)
+              crc = (crc & 0x8000)
+                ? ((crc << 1) ^ 0x1021)
+                : (crc << 1);
+          }
+
+
+          uint8_t hi = crc >> 8;
+          uint8_t lo = crc & 0xFF;
+
+
+          if (hi == 0x28 || hi == 0x0D || hi == 0x0A)
+            hi++;
+
+          if (lo == 0x28 || lo == 0x0D || lo == 0x0A)
+            lo++;
+
+
+          f.push_back(hi);
+          f.push_back(lo);
+          f.push_back(0x0D);
+
+
+          id(uart_0).write_array(
+            f.data(),
+            f.size()
+          );
+
+          id(uart_0).flush();
+
+
+          std::string hex;
+          char b[8];
+
+
+          for (auto x : f) {
+
+            sprintf(
+              b,
+              "%02X ",
+              x
+            );
+
+            hex += b;
+          }
+
+
+          ESP_LOGI(
+            "PI30",
+            "TX  \"%s\"  ->  %s",
+            buf,
+            hex.c_str()
+          );
+
+
+      - delay: 1500ms
+
+
+      - lambda: |-
+          std::vector<uint8_t> d;
+          uint8_t c;
+
+
+          while (id(uart_0).available()) {
+
+            if (id(uart_0).read_byte(&c))
+              d.push_back(c);
+          }
+
+
+          if (d.empty()) {
+
+            ESP_LOGW(
+              "PI30",
+              "RX  no reply"
+            );
+
+            return;
+          }
+
+
+          std::string hex;
+          std::string txt;
+          char b[8];
+
+
+          for (auto x : d) {
+
+            sprintf(
+              b,
+              "%02X ",
+              x
+            );
+
+            hex += b;
+
+
+            txt += (x >= 0x20 && x <= 0x7E)
+              ? (char) x
+              : '.';
+          }
+
+
+          ESP_LOGI(
+            "PI30",
+            "RX  %d bytes",
+            (int) d.size()
+          );
+
+          ESP_LOGI(
+            "PI30",
+            "RX HEX    %s",
+            hex.c_str()
+          );
+
+          ESP_LOGI(
+            "PI30",
+            "RX ASCII  %s",
+            txt.c_str()
+          );
+
+
+          std::string t;
+
+
+          for (auto x : d) {
+
+            if (x == 0x0D)
+              break;
+
+            if (x >= 0x20 && x <= 0x7E)
+              t += (char) x;
+          }
+
+
+          id(ts_reply).publish_state(t);
+
+
+          if (t.rfind("(OK", 0) == 0) {
+
+            ESP_LOGI(
+              "PI30",
+              ">>> Command accepted"
+            );
+
+          } else if (t.rfind("(NAK", 0) == 0) {
+
+            ESP_LOGW(
+              "PI30",
+              ">>> Command rejected: value out of range or unsupported"
+            );
+          }
+
+
+# =====================================================================
+# SELECT
+# =====================================================================
+
+select:
+
+  - platform: template
+
+    name: "PI30 baud rate"
+
+    initial_option: "2400"
+
+    options:
+      - "1200"
+      - "2400"
+      - "4800"
+      - "9600"
+      - "19200"
+      - "38400"
+
+    set_action:
+
+      - lambda: |-
+          int b = atoi(x.c_str());
+
+          id(uart_0).set_baud_rate(b);
+          id(uart_0).load_settings(false);
+
+          ESP_LOGI(
+            "PI30",
+            "===== BAUD RATE now %d =====",
+            b
+          );
+
+
+# =====================================================================
+# TEXT INPUT
+# =====================================================================
+
+text:
+
+  - platform: template
+    name: "PI30 manual command"
+    id: txt_cmd
+    optimistic: true
+    mode: text
+    initial_value: "QPI"
+    restore_value: true
+
+
+  # -------------------------------------------------------------------
+  # Output settings
+  # -------------------------------------------------------------------
+
+  - platform: template
+    name: "PI30 POUTV (output voltage 110-260)"
+    id: txt_poutv
+    optimistic: true
+    mode: text
+    initial_value: "230"
+    restore_value: true
+
+
+  - platform: template
+    name: "PI30 POUTF (output frequency 50-60)"
+    id: txt_poutf
+    optimistic: true
+    mode: text
+    initial_value: "50"
+    restore_value: true
+
+
+  # -------------------------------------------------------------------
+  # Battery voltage settings
+  # -------------------------------------------------------------------
+
+  - platform: template
+    name: "PI30 PBCV (bulk charge 24.0-30.0)"
+    id: txt_pbcv
+    optimistic: true
+    mode: text
+    initial_value: "28.0"
+    restore_value: true
+
+
+  - platform: template
+    name: "PI30 PBFTV (float voltage 22.0-28.0)"
+    id: txt_pbftv
+    optimistic: true
+    mode: text
+    initial_value: "27.0"
+    restore_value: true
+
+
+  - platform: template
+    name: "PI30 PBDV (discharge 20.0-28.5)"
+    id: txt_pbdv
+    optimistic: true
+    mode: text
+    initial_value: "23.5"
+    restore_value: true
+
+
+  - platform: template
+    name: "PI30 PBLWV (low warning 18.0-24.0)"
+    id: txt_pblwv
+    optimistic: true
+    mode: text
+    initial_value: "21.0"
+    restore_value: true
+
+
+  # -------------------------------------------------------------------
+  # Charging current settings
+  # -------------------------------------------------------------------
+
+  - platform: template
+    name: "PI30 MCHGC (max charge current 0-100)"
+    id: txt_mchgc
+    optimistic: true
+    mode: text
+    initial_value: "40"
+    restore_value: true
+
+
+  - platform: template
+    name: "PI30 PSBIC (solar bulk current 0-100)"
+    id: txt_psbic
+    optimistic: true
+    mode: text
+    initial_value: "30"
+    restore_value: true
+
+
+  # -------------------------------------------------------------------
+  # Solar settings
+  # -------------------------------------------------------------------
+
+  - platform: template
+    name: "PI30 SCOV (solar overvolt 40-150)"
+    id: txt_scov
+    optimistic: true
+    mode: text
+    initial_value: "60.0"
+    restore_value: true
+
+
+  - platform: template
+    name: "PI30 PSDT (solar threshold 0-100%)"
+    id: txt_psdt
+    optimistic: true
+    mode: text
+    initial_value: "20"
+    restore_value: true
+
+
+  - platform: template
+    name: "PI30 PSBS (solar search 10-100W)"
+    id: txt_psbs
+    optimistic: true
+    mode: text
+    initial_value: "50"
+    restore_value: true
+
+
+  - platform: template
+    name: "PI30 PSFSV (solar float current 0-100)"
+    id: txt_psfsv
+    optimistic: true
+    mode: text
+    initial_value: "10"
+    restore_value: true
+
+
+  # -------------------------------------------------------------------
+  # Grid settings
+  # -------------------------------------------------------------------
+
+  - platform: template
+    name: "PI30 PGVLV (grid low 100-180V)"
+    id: txt_pgvlv
+    optimistic: true
+    mode: text
+    initial_value: "160"
+    restore_value: true
+
+
+  - platform: template
+    name: "PI30 PGVHV (grid high 220-280V)"
+    id: txt_pgvhv
+    optimistic: true
+    mode: text
+    initial_value: "260"
+    restore_value: true
+
+
+  - platform: template
+    name: "PI30 PSTIM (set system time YYYYMMDDHHMMSS)"
+    id: txt_pstim
+    optimistic: true
+    mode: text
+    initial_value: "20260829120000"
+    restore_value: true
+
+
+  - platform: template
+    name: "PI30 PSHT (sleep mode hours 0-24)"
+    id: txt_psht
+    optimistic: true
+    mode: text
+    initial_value: "0"
+    restore_value: true
+
+
+  # -------------------------------------------------------------------
+  # Advanced protection parameters
+  # -------------------------------------------------------------------
+
+  - platform: template
+    name: "PI30 PTHV (thermal high voltage 22.0-30.0V)"
+    id: txt_pthv
+    optimistic: true
+    mode: text
+    initial_value: "29.0"
+    restore_value: true
+
+
+  - platform: template
+    name: "PI30 PTLV (thermal low voltage 16.0-24.0V)"
+    id: txt_ptlv
+    optimistic: true
+    mode: text
+    initial_value: "18.0"
+    restore_value: true
+
+
+  - platform: template
+    name: "PI30 PTOH (thermal over hour 1-10)"
+    id: txt_ptoh
+    optimistic: true
+    mode: text
+    initial_value: "2"
+    restore_value: true
+
+
+  - platform: template
+    name: "PI30 PTHC (thermal high current 0-200A)"
+    id: txt_pthc
+    optimistic: true
+    mode: text
+    initial_value: "80"
+    restore_value: true
+
+
+  # -------------------------------------------------------------------
+  # Charge / discharge rate control
+  # -------------------------------------------------------------------
+
+  - platform: template
+    name: "PI30 PCRDC (charge rate % 0-100)"
+    id: txt_pcrdc
+    optimistic: true
+    mode: text
+    initial_value: "100"
+    restore_value: true
+
+
+  - platform: template
+    name: "PI30 PCRDS (discharge rate % 0-100)"
+    id: txt_pcrds
+    optimistic: true
+    mode: text
+    initial_value: "100"
+    restore_value: true
+
+
+  # -------------------------------------------------------------------
+  # Fan control
+  # -------------------------------------------------------------------
+
+  - platform: template
+    name: "PI30 PFANLS (fan low speed % 20-100)"
+    id: txt_pfanls
+    optimistic: true
+    mode: text
+    initial_value: "30"
+    restore_value: true
+
+
+  - platform: template
+    name: "PI30 PFANHS (fan high speed % 50-100)"
+    id: txt_pfanhs
+    optimistic: true
+    mode: text
+    initial_value: "100"
+    restore_value: true
+
+
+# =====================================================================
+# SWITCH
+# =====================================================================
+
+switch:
+
+  - platform: template
+
+    name: "PI30 automatic polling"
+
+    restore_mode: ALWAYS_ON
+
+    turn_on_action:
+
+      - lambda: |-
+          id(g_polling) = true;
+
+
+    turn_off_action:
+
+      - lambda: |-
+          id(g_polling) = false;
+
+
+# =====================================================================
+# BUTTONS
+# =====================================================================
+
+button:
+
+  # -------------------------------------------------------------------
+  # Manual command
+  # -------------------------------------------------------------------
+
+  - platform: template
+
+    name: "PI30 send manual command"
+
+    on_press:
+
+      - script.execute:
+          id: send_cmd
+          cmd: !lambda "return id(txt_cmd).state;"
+
+
+  # -------------------------------------------------------------------
+  # READ COMMANDS
+  # -------------------------------------------------------------------
+
+  - platform: template
+    name: "PI30 QPI"
+
+    on_press:
+      - script.execute:
+          id: send_cmd
+          cmd: "QPI"
+
+
+  - platform: template
+    name: "PI30 QID"
+
+    on_press:
+      - script.execute:
+          id: send_cmd
+          cmd: "QID"
+
+
+  - platform: template
+    name: "PI30 QVFW"
+
+    on_press:
+      - script.execute:
+          id: send_cmd
+          cmd: "QVFW"
+
+
+  - platform: template
+    name: "PI30 QMN"
+
+    on_press:
+      - script.execute:
+          id: send_cmd
+          cmd: "QMN"
+
+
+  - platform: template
+    name: "PI30 QPIRI"
+
+    on_press:
+      - script.execute:
+          id: send_cmd
+          cmd: "QPIRI"
+
+
+  - platform: template
+    name: "PI30 QDI"
+
+    on_press:
+      - script.execute:
+          id: send_cmd
+          cmd: "QDI"
+
+
+  - platform: template
+    name: "PI30 QFLAG"
+
+    on_press:
+      - script.execute:
+          id: send_cmd
+          cmd: "QFLAG"
+
+
+  - platform: template
+    name: "PI30 QMOD"
+
+    on_press:
+      - script.execute:
+          id: send_cmd
+          cmd: "QMOD"
+
+
+  - platform: template
+    name: "PI30 QPIGS"
+
+    on_press:
+      - script.execute:
+          id: send_cmd
+          cmd: "QPIGS"
+
+
+  - platform: template
+    name: "PI30 QPIWS"
+
+    on_press:
+      - script.execute:
+          id: send_cmd
+          cmd: "QPIWS"
+
+
+  # -------------------------------------------------------------------
+  # WRITE COMMANDS
+  # -------------------------------------------------------------------
+
+  # Output priority
+
+  - platform: template
+    name: "SET output: Utility first"
+
+    on_press:
+      - script.execute:
+          id: send_cmd
+          cmd: "POP00"
+
+
+  - platform: template
+    name: "SET output: Solar first"
+
+    on_press:
+      - script.execute:
+          id: send_cmd
+          cmd: "POP01"
+
+
+  - platform: template
+    name: "SET output: SBU"
+
+    on_press:
+      - script.execute:
+          id: send_cmd
+          cmd: "POP02"
+
+
+  # -------------------------------------------------------------------
+  # Charger priority
+  # -------------------------------------------------------------------
+
+  - platform: template
+    name: "SET charger: Utility first"
+
+    on_press:
+      - script.execute:
+          id: send_cmd
+          cmd: "PCP00"
+
+
+  - platform: template
+    name: "SET charger: Solar first"
+
+    on_press:
+      - script.execute:
+          id: send_cmd
+          cmd: "PCP01"
+
+
+  - platform: template
+    name: "SET charger: Solar + Utility"
+
+    on_press:
+      - script.execute:
+          id: send_cmd
+          cmd: "PCP02"
+
+
+  - platform: template
+    name: "SET charger: Solar only"
+
+    on_press:
+      - script.execute:
+          id: send_cmd
+          cmd: "PCP03"
+
+
+  # -------------------------------------------------------------------
+  # Battery search
+  # -------------------------------------------------------------------
+
+  - platform: template
+    name: "SET battery search: disabled"
+
+    on_press:
+      - script.execute:
+          id: send_cmd
+          cmd: "PSBS0"
+
+
+  - platform: template
+    name: "SET battery search: enabled"
+
+    on_press:
+      - script.execute:
+          id: send_cmd
+          cmd: "PSBS1"
+
+
+  # -------------------------------------------------------------------
+  # Standby
+  # -------------------------------------------------------------------
+
+  - platform: template
+    name: "STANDBY (machine off)"
+
+    on_press:
+      - script.execute:
+          id: send_cmd
+          cmd: "PSDM"
+
+
+  # -------------------------------------------------------------------
+  # Output source priority status
+  # -------------------------------------------------------------------
+
+  - platform: template
+    name: "READ output priority status"
+
+    on_press:
+      - script.execute:
+          id: send_cmd
+          cmd: "QOPS"
+
+
+  # -------------------------------------------------------------------
+  # Reset
+  # -------------------------------------------------------------------
+
+  - platform: template
+    name: "RESET to factory defaults"
+
+    on_press:
+      - script.execute:
+          id: send_cmd
+          cmd: "RESET"
+
+
+  # -------------------------------------------------------------------
+  # Battery discharge
+  # -------------------------------------------------------------------
+
+  - platform: template
+    name: "PI30 Battery discharge ON"
+
+    on_press:
+      - script.execute:
+          id: send_cmd
+          cmd: "PBATCD110"
+
+
+  - platform: template
+    name: "PI30 Battery discharge OFF"
+
+    on_press:
+      - script.execute:
+          id: send_cmd
+          cmd: "PBATCD010"
+
+
+  # -------------------------------------------------------------------
+  # Output settings
+  # -------------------------------------------------------------------
+
+  - platform: template
+    name: "SET output voltage"
+
+    on_press:
+      - script.execute:
+          id: send_param_cmd
+          prefix: "POUTV"
+          value: !lambda "return id(txt_poutv).state;"
+
+
+  - platform: template
+    name: "SET output frequency"
+
+    on_press:
+      - script.execute:
+          id: send_param_cmd
+          prefix: "POUTF"
+          value: !lambda "return id(txt_poutf).state;"
+
+
+  # -------------------------------------------------------------------
+  # Battery voltage settings
+  # -------------------------------------------------------------------
+
+  - platform: template
+    name: "SET battery bulk charge voltage"
+
+    on_press:
+      - script.execute:
+          id: send_param_cmd
+          prefix: "PBCV"
+          value: !lambda "return id(txt_pbcv).state;"
+
+
+  - platform: template
+    name: "SET battery float voltage"
+
+    on_press:
+      - script.execute:
+          id: send_param_cmd
+          prefix: "PBFTV"
+          value: !lambda "return id(txt_pbftv).state;"
+
+
+  - platform: template
+    name: "SET battery discharge voltage"
+
+    on_press:
+      - script.execute:
+          id: send_param_cmd
+          prefix: "PBDV"
+          value: !lambda "return id(txt_pbdv).state;"
+
+
+  - platform: template
+    name: "SET battery low warning voltage"
+
+    on_press:
+      - script.execute:
+          id: send_param_cmd
+          prefix: "PBLWV"
+          value: !lambda "return id(txt_pblwv).state;"
+
+
+  # -------------------------------------------------------------------
+  # Charging current
+  # -------------------------------------------------------------------
+
+  - platform: template
+    name: "SET max charging current"
+
+    on_press:
+      - script.execute:
+          id: send_param_cmd
+          prefix: "MCHGC"
+          value: !lambda "return id(txt_mchgc).state;"
+
+
+  - platform: template
+    name: "SET solar bulk charging current"
+
+    on_press:
+      - script.execute:
+          id: send_param_cmd
+          prefix: "PSBIC"
+          value: !lambda "return id(txt_psbic).state;"
+
+
+  # -------------------------------------------------------------------
+  # Solar settings
+  # -------------------------------------------------------------------
+
+  - platform: template
+    name: "SET solar charger over voltage"
+
+    on_press:
+      - script.execute:
+          id: send_param_cmd
+          prefix: "SCOV"
+          value: !lambda "return id(txt_scov).state;"
+
+
+  - platform: template
+    name: "SET solar power threshold"
+
+    on_press:
+      - script.execute:
+          id: send_param_cmd
+          prefix: "PSDT"
+          value: !lambda "return id(txt_psdt).state;"
+
+
+  - platform: template
+    name: "SET solar search threshold"
+
+    on_press:
+      - script.execute:
+          id: send_param_cmd
+          prefix: "PSBS"
+          value: !lambda "return id(txt_psbs).state;"
+
+
+  - platform: template
+    name: "SET solar float charging current"
+
+    on_press:
+      - script.execute:
+          id: send_param_cmd
+          prefix: "PSFSV"
+          value: !lambda "return id(txt_psfsv).state;"
+
+
+  # -------------------------------------------------------------------
+  # Grid settings
+  # -------------------------------------------------------------------
+
+  - platform: template
+    name: "SET grid voltage low threshold"
+
+    on_press:
+      - script.execute:
+          id: send_param_cmd
+          prefix: "PGVLV"
+          value: !lambda "return id(txt_pgvlv).state;"
+
+
+  - platform: template
+    name: "SET grid voltage high threshold"
+
+    on_press:
+      - script.execute:
+          id: send_param_cmd
+          prefix: "PGVHV"
+          value: !lambda "return id(txt_pgvhv).state;"
+
+
+  # -------------------------------------------------------------------
+  # Transformer
+  # -------------------------------------------------------------------
+
+  - platform: template
+    name: "PI30 Transformer ON"
+
+    on_press:
+      - script.execute:
+          id: send_cmd
+          cmd: "PTRANS1"
+
+
+  - platform: template
+    name: "PI30 Transformer OFF"
+
+    on_press:
+      - script.execute:
+          id: send_cmd
+          cmd: "PTRANS0"
+
+
+  # -------------------------------------------------------------------
+  # Fan
+  # -------------------------------------------------------------------
+
+  - platform: template
+    name: "PI30 Fan ON"
+
+    on_press:
+      - script.execute:
+          id: send_cmd
+          cmd: "PFAN1"
+
+
+  - platform: template
+    name: "PI30 Fan OFF"
+
+    on_press:
+      - script.execute:
+          id: send_cmd
+          cmd: "PFAN0"
+
+
+  # -------------------------------------------------------------------
+  # Advanced control
+  # -------------------------------------------------------------------
+
+  - platform: template
+    name: "SET system time"
+
+    on_press:
+      - script.execute:
+          id: send_param_cmd
+          prefix: "PSTIM"
+          value: !lambda "return id(txt_pstim).state;"
+
+
+  - platform: template
+    name: "SET sleep mode hours"
+
+    on_press:
+      - script.execute:
+          id: send_param_cmd
+          prefix: "PSHT"
+          value: !lambda "return id(txt_psht).state;"
+
+
+  - platform: template
+    name: "SET thermal high voltage"
+
+    on_press:
+      - script.execute:
+          id: send_param_cmd
+          prefix: "PTHV"
+          value: !lambda "return id(txt_pthv).state;"
+
+
+  - platform: template
+    name: "SET thermal low voltage"
+
+    on_press:
+      - script.execute:
+          id: send_param_cmd
+          prefix: "PTLV"
+          value: !lambda "return id(txt_ptlv).state;"
+
+
+  - platform: template
+    name: "SET thermal over hour"
+
+    on_press:
+      - script.execute:
+          id: send_param_cmd
+          prefix: "PTOH"
+          value: !lambda "return id(txt_ptoh).state;"
+
+
+  - platform: template
+    name: "SET thermal high current"
+
+    on_press:
+      - script.execute:
+          id: send_param_cmd
+          prefix: "PTHC"
+          value: !lambda "return id(txt_pthc).state;"
+
+
+  - platform: template
+    name: "SET charge rate"
+
+    on_press:
+      - script.execute:
+          id: send_param_cmd
+          prefix: "PCRDC"
+          value: !lambda "return id(txt_pcrdc).state;"
+
+
+  - platform: template
+    name: "SET discharge rate"
+
+    on_press:
+      - script.execute:
+          id: send_param_cmd
+          prefix: "PCRDS"
+          value: !lambda "return id(txt_pcrds).state;"
+
+
+  - platform: template
+    name: "SET fan low speed"
+
+    on_press:
+      - script.execute:
+          id: send_param_cmd
+          prefix: "PFANLS"
+          value: !lambda "return id(txt_pfanls).state;"
+
+
+  - platform: template
+    name: "SET fan high speed"
+
+    on_press:
+      - script.execute:
+          id: send_param_cmd
+          prefix: "PFANHS"
+          value: !lambda "return id(txt_pfanhs).state;"
+
+
+# =====================================================================
+# TEXT SENSORS
+# =====================================================================
+
+text_sensor:
+
+  # -------------------------------------------------------------------
+  # PI30 replies
+  # -------------------------------------------------------------------
+
+  - platform: template
+    name: "PI30 last reply"
+    id: ts_reply
+    update_interval: never
+
+
+  - platform: template
+    name: "PI30 output priority status"
+    id: ts_qops
+    update_interval: never
+
+
+  # -------------------------------------------------------------------
+  # WiFi information
+  # -------------------------------------------------------------------
+
+  - platform: wifi_info
+
+    ip_address:
+      name: ESP IP Address
+      id: ip_address
+
+    ssid:
+      name: ESP Connected SSID
+      id: wifi_ssid
+
+    bssid:
+      name: ESP Connected BSSID
+
+    mac_address:
+      name: ESP Mac Wifi Address
+
+    scan_results:
+      name: ESP Latest Scan Results
+
+    dns_address:
+      name: ESP DNS Address
+
+
+  # ===================================================================
+  # PARAMETRI BATTERIA DA HOME ASSISTANT
+  # ===================================================================
+
+  - platform: homeassistant
+    id: display_bulk_voltage
+    entity_id: text.heltec_pi30_pi30_pbcv_bulk_charge_24_0_30_0
+    internal: true
+
+
+  - platform: homeassistant
+    id: display_float_voltage
+    entity_id: text.heltec_pi30_pi30_pbftv_float_voltage_22_0_28_0
+    internal: true
+
+
+  - platform: homeassistant
+    id: display_discharge_voltage
+    entity_id: text.heltec_pi30_pi30_pbdv_discharge_20_0_28_5
+    internal: true
+
+
+  - platform: homeassistant
+    id: display_low_warning_voltage
+    entity_id: text.heltec_pi30_pi30_pblwv_low_warning_18_0_24_0
+    internal: true
+
+
+# =====================================================================
+# PI30 SENSORS
+# TUTTI I SENSOR SONO IN UN'UNICA SEZIONE
+# =====================================================================
+
+sensor:
+
+  # -------------------------------------------------------------------
+  # Grid voltage
+  # -------------------------------------------------------------------
+
+  - platform: template
+    name: "PI30 grid voltage"
+    id: s_grid_v
+    unit_of_measurement: "V"
+    device_class: voltage
+    state_class: measurement
+    accuracy_decimals: 1
+    update_interval: never
+
+
+  # -------------------------------------------------------------------
+  # Grid frequency
+  # -------------------------------------------------------------------
+
+  - platform: template
+    name: "PI30 grid frequency"
+    id: s_grid_hz
+    unit_of_measurement: "Hz"
+    device_class: frequency
+    state_class: measurement
+    accuracy_decimals: 1
+    update_interval: never
+
+
+  # -------------------------------------------------------------------
+  # Output voltage
+  # -------------------------------------------------------------------
+
+  - platform: template
+    name: "PI30 output voltage"
+    id: s_out_v
+    unit_of_measurement: "V"
+    device_class: voltage
+    state_class: measurement
+    accuracy_decimals: 1
+    update_interval: never
+
+
+  # -------------------------------------------------------------------
+  # Output frequency
+  # -------------------------------------------------------------------
+
+  - platform: template
+    name: "PI30 output frequency"
+    id: s_out_hz
+    unit_of_measurement: "Hz"
+    device_class: frequency
+    state_class: measurement
+    accuracy_decimals: 1
+    update_interval: never
+
+
+  # -------------------------------------------------------------------
+  # Output apparent power
+  # -------------------------------------------------------------------
+
+  - platform: template
+    name: "PI30 output apparent power"
+    id: s_out_va
+    unit_of_measurement: "VA"
+    device_class: apparent_power
+    state_class: measurement
+    accuracy_decimals: 0
+    update_interval: never
+
+
+  # -------------------------------------------------------------------
+  # Output active power
+  # -------------------------------------------------------------------
+
+  - platform: template
+    name: "PI30 output active power"
+    id: s_out_w
+    unit_of_measurement: "W"
+    device_class: power
+    state_class: measurement
+    accuracy_decimals: 0
+    update_interval: never
+
+
+  # -------------------------------------------------------------------
+  # Load percentage
+  # -------------------------------------------------------------------
+
+  - platform: template
+    name: "PI30 load percent"
+    id: s_load
+    unit_of_measurement: "%"
+    state_class: measurement
+    accuracy_decimals: 0
+    update_interval: never
+
+
+  # -------------------------------------------------------------------
+  # Bus voltage
+  # -------------------------------------------------------------------
+
+  - platform: template
+    name: "PI30 bus voltage"
+    id: s_bus_v
+    unit_of_measurement: "V"
+    device_class: voltage
+    state_class: measurement
+    accuracy_decimals: 0
+    update_interval: never
+
+
+  # -------------------------------------------------------------------
+  # Battery voltage
+  # -------------------------------------------------------------------
+
+  - platform: template
+    name: "PI30 battery voltage"
+    id: s_batt_v
+    unit_of_measurement: "V"
+    device_class: voltage
+    state_class: measurement
+    accuracy_decimals: 2
+    update_interval: never
+    icon: "mdi:battery-charging-high"
+
+
+  # -------------------------------------------------------------------
+  # Battery charging current
+  # -------------------------------------------------------------------
+
+  - platform: template
+    name: "PI30 battery charging current"
+    id: s_batt_chg
+    unit_of_measurement: "A"
+    device_class: current
+    state_class: measurement
+    accuracy_decimals: 0
+    update_interval: never
+
+
+  # -------------------------------------------------------------------
+  # Battery discharge current
+  # -------------------------------------------------------------------
+
+  - platform: template
+    name: "PI30 battery discharge current"
+    id: s_batt_dis
+    unit_of_measurement: "A"
+    device_class: current
+    state_class: measurement
+    accuracy_decimals: 0
+    update_interval: never
+
+
+  # -------------------------------------------------------------------
+  # Battery current
+  # -------------------------------------------------------------------
+
+  - platform: template
+    name: "PI30 battery current"
+    id: s_batt_a
+    unit_of_measurement: "A"
+    device_class: current
+    state_class: measurement
+    accuracy_decimals: 1
+    update_interval: never
+
+
+  # -------------------------------------------------------------------
+  # Battery power
+  # -------------------------------------------------------------------
+
+  - platform: template
+    name: "PI30 battery power"
+    id: s_batt_w
+    unit_of_measurement: "W"
+    device_class: power
+    state_class: measurement
+    accuracy_decimals: 0
+    update_interval: never
+
+
+  # -------------------------------------------------------------------
+  # Battery SoC
+  # -------------------------------------------------------------------
+
+  - platform: template
+    name: "PI30 battery SoC"
+    id: s_soc
+    unit_of_measurement: "%"
+    device_class: battery
+    state_class: measurement
+    accuracy_decimals: 0
+    update_interval: never
+
+
+  # -------------------------------------------------------------------
+  # Heat sink temperature
+  # -------------------------------------------------------------------
+
+  - platform: template
+    name: "PI30 heat sink temperature"
+    id: s_temp
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 0
+    update_interval: never
+
+
+  # -------------------------------------------------------------------
+  # PV voltage
+  # -------------------------------------------------------------------
+
+  - platform: template
+    name: "PI30 PV voltage"
+    id: s_pv_v
+    unit_of_measurement: "V"
+    device_class: voltage
+    state_class: measurement
+    accuracy_decimals: 1
+    update_interval: never
+
+
+  # -------------------------------------------------------------------
+  # PV current
+  # -------------------------------------------------------------------
+
+  - platform: template
+    name: "PI30 PV current"
+    id: s_pv_a
+    unit_of_measurement: "A"
+    device_class: current
+    state_class: measurement
+    accuracy_decimals: 1
+    update_interval: never
+
+
+  # -------------------------------------------------------------------
+  # PV power
+  # -------------------------------------------------------------------
+
+  - platform: template
+    name: "PI30 PV power"
+    id: s_pv_w
+    unit_of_measurement: "W"
+    device_class: power
+    state_class: measurement
+    accuracy_decimals: 0
+    update_interval: never
+
+
+  # -------------------------------------------------------------------
+  # WiFi signal
+  # -------------------------------------------------------------------
+
+  - platform: wifi_signal
+
+    name: "WiFi Signal dB"
+    id: wifi_signal_db
+
+    update_interval: 10s
+
+    entity_category: diagnostic
+
+
+  # -------------------------------------------------------------------
+  # WiFi signal percentage
+  # -------------------------------------------------------------------
+
+  - platform: copy
+
+    source_id: wifi_signal_db
+
+    id: wifi_signal_percentage
+
+    name: "WiFi Signal %"
+
+    filters:
+
+      - lambda: |-
+          return min(
+            max(
+              2 * (x + 100.0),
+              0.0
+            ),
+            100.0
+          );
+
+    unit_of_measurement: "Signal %"
+
+    entity_category: diagnostic
+
+
+# =====================================================================
+# SENSORI HOME ASSISTANT UTILIZZATI ESCLUSIVAMENTE DAL DISPLAY
+# =====================================================================
+
+  # -------------------------------------------------------------------
+  # PAGE 3
+  # -------------------------------------------------------------------
+
+  - platform: homeassistant
+    id: display_battery_voltage
+    entity_id: sensor.heltec_pi30_battery_voltage
+    internal: true
+
+
+  - platform: homeassistant
+    id: display_battery_soc
+    entity_id: sensor.heltec_pi30_battery_soc
+    internal: true
+
+
+  - platform: homeassistant
+    id: display_heat_sink_temperature
+    entity_id: sensor.heltec_pi30_heat_sink_temperature
+    internal: true
+
+
+  - platform: homeassistant
+    id: display_output_active_power
+    entity_id: sensor.heltec_pi30_output_active_power
+    internal: true
+
+
+  # -------------------------------------------------------------------
+  # PAGE 4
+  # -------------------------------------------------------------------
+
+  - platform: homeassistant
+    id: display_battery_charge_power
+    entity_id: sensor.heltec_pi30_batteria_potenza_carica
+    internal: true
+
+
+  - platform: homeassistant
+    id: display_battery_charge_energy
+    entity_id: sensor.heltec_pi30_batteria_energia_caricata_giornaliera
+    internal: true
+
+
+  - platform: homeassistant
+    id: display_battery_discharge_power
+    entity_id: sensor.heltec_pi30_batteria_potenza_scarica
+    internal: true
+
+
+  - platform: homeassistant
+    id: display_battery_discharge_energy
+    entity_id: sensor.heltec_pi30_batteria_energia_scaricata_giornaliera
+    internal: true
+
+
+# =====================================================================
+# INTERVAL - POLLING + DISPLAY ROTATION
+# TUTTI GLI INTERVAL SONO IN UN'UNICA SEZIONE
+# =====================================================================
+
+interval:
+
+  # -------------------------------------------------------------------
+  # PI30 polling
+  # -------------------------------------------------------------------
+
+  - interval: 15s
+
+    then:
+
+      - if:
+
+          condition:
+            lambda: |-
+              return id(g_polling);
+
+          then:
+            - script.execute: poll_inverter
+
+
+  # -------------------------------------------------------------------
+  # Display page rotation
+  # -------------------------------------------------------------------
+
+  - interval: 4s
+
+    then:
+
+      - display.page.show_next: my_display
+      - component.update: my_display
+
+
+# =====================================================================
+# TIME
+# =====================================================================
+
+time:
+
+  - platform: homeassistant
+    id: homeassistant_time
+
+
+  - platform: sntp
+    id: sntp_zone_time
+    timezone: Europe/Rome
+
+
+# =====================================================================
+# I2C DISPLAY
+# =====================================================================
+
+i2c:
+
+  - id: bus_a
+    sda: GPIO17
+    scl: GPIO18
+    scan: false
+
+
+# =====================================================================
+# IMAGE
+# =====================================================================
+
+image:
+
+  - platform: file
+    file: solar_power.bmp
+    id: solar_icon
+    resize: 65x50
+    type: BINARY
+
+
+# =====================================================================
+# GRAPH
+# TENSIONE BATTERIA
+#
+# 23 V = minimo
+# 29 V = massimo
+# =====================================================================
+
+graph:
+
+  - id: battery_voltage_graph
+
+    duration: 24h
+
+    x_grid: 120min
+    y_grid: 1
+
+    width: 128
+    height: 64
+
+    min_value: 23
+    max_value: 29
+
+    traces:
+
+      - sensor: s_batt_v
+        line_type: SOLID
+        line_thickness: 2
+
+
+# =====================================================================
+# OLED DISPLAY
+# =====================================================================
+
+display:
+
+  - platform: ssd1306_i2c
+
+    model: "SSD1306 128x64"
+
+    reset_pin: GPIO21
+
+    i2c_id: bus_a
+
+    address: 0x3C
+
+    contrast: 50%
+
+    id: my_display
+
+
+    pages:
+
+
+      # ================================================================
+      # PAGE 1
+      # SCHERMATA PRINCIPALE
+      # ================================================================
+
+      - id: page1
+
+        lambda: |-
+
+          // ----------------------------------------------------------
+          // Giorno della settimana in italiano
+          // ----------------------------------------------------------
+
+          auto now = id(homeassistant_time).now();
+
+          const char *giorno;
+
+          switch (now.day_of_week) {
+
+            case 1:
+              giorno = "Domenica";
+              break;
+
+            case 2:
+              giorno = "Lunedì";
+              break;
+
+            case 3:
+              giorno = "Martedì";
+              break;
+
+            case 4:
+              giorno = "Mercoledì";
+              break;
+
+            case 5:
+              giorno = "Giovedì";
+              break;
+
+            case 6:
+              giorno = "Venerdì";
+              break;
+
+            case 7:
+              giorno = "Sabato";
+              break;
+
+            default:
+              giorno = "---";
+              break;
+          }
+
+
+          // ----------------------------------------------------------
+          // Mese in italiano
+          // ----------------------------------------------------------
+
+          const char *mese;
+
+          switch (now.month) {
+
+            case 1:
+              mese = "Gen";
+              break;
+
+            case 2:
+              mese = "Feb";
+              break;
+
+            case 3:
+              mese = "Mar";
+              break;
+
+            case 4:
+              mese = "Apr";
+              break;
+
+            case 5:
+              mese = "Mag";
+              break;
+
+            case 6:
+              mese = "Giu";
+              break;
+
+            case 7:
+              mese = "Lug";
+              break;
+
+            case 8:
+              mese = "Ago";
+              break;
+
+            case 9:
+              mese = "Set";
+              break;
+
+            case 10:
+              mese = "Ott";
+              break;
+
+            case 11:
+              mese = "Nov";
+              break;
+
+            case 12:
+              mese = "Dic";
+              break;
+
+            default:
+              mese = "---";
+              break;
+          }
+
+
+          // ----------------------------------------------------------
+          // Icone disabilitate
+          // ----------------------------------------------------------
+
+          // it.printf(
+          //   0,
+          //   0,
+          //   id(icon_font),
+          //   TextAlign::TOP_LEFT,
+          //   "󰟑󰌪"
+          // );
+
+
+          // ----------------------------------------------------------
+          // Titolo
+          // ----------------------------------------------------------
+
+          it.printf(
+            0,
+            0,
+            id(arial),
+            TextAlign::TOP_LEFT,
+            "Travis90x"
+          );
+
+
+          // ----------------------------------------------------------
+          // Immagine solare
+          // ----------------------------------------------------------
+
+          it.image(
+            10,
+            16,
+            id(solar_icon)
+          );
+
+
+          // ----------------------------------------------------------
+          // Giorno
+          // ----------------------------------------------------------
+
+          it.printf(
+            it.get_width(),
+            it.get_height() - 48,
+            id(arial),
+            TextAlign::BASELINE_RIGHT,
+            "%s",
+            giorno
+          );
+
+
+          // ----------------------------------------------------------
+          // Data
+          // ----------------------------------------------------------
+
+          it.strftime(
+            it.get_width(),
+            it.get_height() - 36,
+            id(arial),
+            TextAlign::BASELINE_RIGHT,
+            "%d",
+            now
+          );
+
+
+          // ----------------------------------------------------------
+          // Mese
+          // ----------------------------------------------------------
+
+          it.printf(
+            it.get_width(),
+            it.get_height() - 24,
+            id(arial),
+            TextAlign::BASELINE_RIGHT,
+            "%s",
+            mese
+          );
+
+
+          // ----------------------------------------------------------
+          // Anno
+          // ----------------------------------------------------------
+
+          it.strftime(
+            it.get_width(),
+            it.get_height() - 12,
+            id(arial),
+            TextAlign::BASELINE_RIGHT,
+            "%Y",
+            now
+          );
+
+
+          // ----------------------------------------------------------
+          // Ora
+          // ----------------------------------------------------------
+
+          it.strftime(
+            it.get_width(),
+            it.get_height(),
+            id(arial),
+            TextAlign::BASELINE_RIGHT,
+            "%H:%M",
+            now
+          );
+      # ================================================================
+      # PAGE 2
+      # WIFI
+      # ================================================================
+
+      - id: page2
+
+        lambda: |-
+
+          // ----------------------------------------------------------
+          // Icona WiFi + SSID
+          // ----------------------------------------------------------
+
+          it.printf(
+            0,
+            0,
+            id(icon_font),
+            TextAlign::TOP_LEFT,
+            "󰖩"
+          );
+
+
+          it.printf(
+            20,
+            0,
+            id(arial),
+            TextAlign::TOP_LEFT,
+            "SSID:"
+          );
+
+
+          it.printf(
+            it.get_width(),
+            0,
+            id(arial),
+            TextAlign::TOP_RIGHT,
+            "%s",
+            id(wifi_ssid).state.c_str()
+          );
+
+
+          // ----------------------------------------------------------
+          // IP
+          // ----------------------------------------------------------
+
+          it.printf(
+            0,
+            it.get_height() - 37,
+            id(arial),
+            TextAlign::BASELINE_LEFT,
+            "IP"
+          );
+
+
+          it.printf(
+            it.get_width(),
+            it.get_height() - 37,
+            id(arial),
+            TextAlign::BASELINE_RIGHT,
+            "%s",
+            id(ip_address).state.c_str()
+          );
+
+
+          // ----------------------------------------------------------
+          // WiFi Signal %
+          // ----------------------------------------------------------
+
+          it.printf(
+            0,
+            it.get_height() - 25,
+            id(arial),
+            TextAlign::BASELINE_LEFT,
+            "WiFi Signal"
+          );
+
+
+          it.printf(
+            it.get_width(),
+            it.get_height() - 25,
+            id(arial),
+            TextAlign::BASELINE_RIGHT,
+            "%.0f%%",
+            id(wifi_signal_percentage).state
+          );
+
+
+          // ----------------------------------------------------------
+          // WiFi Signal dBm
+          // ----------------------------------------------------------
+
+          it.printf(
+            0,
+            it.get_height() - 13,
+            id(arial),
+            TextAlign::BASELINE_LEFT,
+            "WiFi"
+          );
+
+
+          it.printf(
+            it.get_width(),
+            it.get_height() - 13,
+            id(arial),
+            TextAlign::BASELINE_RIGHT,
+            "%.0f dBm",
+            id(wifi_signal_db).state
+          );
+
+      # ================================================================
+      # PAGE 3
+      # BATTERIA
+      # ================================================================
+
+      - id: page3
+
+        lambda: |-
+
+          it.printf(
+            0,
+            0,
+            id(icon_font),
+            TextAlign::TOP_LEFT,
+            "󱊣"
+          );
+
+
+          it.printf(
+            it.get_width() / 2,
+            0,
+            id(arial),
+            TextAlign::TOP_CENTER,
+            "BATTERIA"
+          );
+
+
+          // ----------------------------------------------------------
+          // Tensione
+          // ----------------------------------------------------------
+
+          it.printf(
+            0,
+            it.get_height() - 37,
+            id(arial),
+            TextAlign::BASELINE_LEFT,
+            "Tensione"
+          );
+
+
+          it.printf(
+            it.get_width(),
+            it.get_height() - 37,
+            id(arial),
+            TextAlign::BASELINE_RIGHT,
+            "%.2f V",
+            id(display_battery_voltage).state
+          );
+
+
+          // ----------------------------------------------------------
+          // SOC
+          // ----------------------------------------------------------
+
+          it.printf(
+            0,
+            it.get_height() - 25,
+            id(arial),
+            TextAlign::BASELINE_LEFT,
+            "SOC"
+          );
+
+
+          it.printf(
+            it.get_width(),
+            it.get_height() - 25,
+            id(arial),
+            TextAlign::BASELINE_RIGHT,
+            "%.0f%%",
+            id(display_battery_soc).state
+          );
+
+
+          // ----------------------------------------------------------
+          // Temperatura
+          // ----------------------------------------------------------
+
+          it.printf(
+            0,
+            it.get_height() - 13,
+            id(arial),
+            TextAlign::BASELINE_LEFT,
+            "Temp."
+          );
+
+
+          it.printf(
+            it.get_width(),
+            it.get_height() - 13,
+            id(arial),
+            TextAlign::BASELINE_RIGHT,
+            "%.0f°C",
+            id(display_heat_sink_temperature).state
+          );
+
+
+          // ----------------------------------------------------------
+          // Power
+          // ----------------------------------------------------------
+
+          it.printf(
+            0,
+            it.get_height() - 1,
+            id(arial),
+            TextAlign::BASELINE_LEFT,
+            "Power"
+          );
+
+
+          it.printf(
+            it.get_width(),
+            it.get_height() - 1,
+            id(arial),
+            TextAlign::BASELINE_RIGHT,
+            "%.0f W",
+            id(display_output_active_power).state
+          );
+      # ================================================================
+      # PAGE 4
+      # CARICA / SCARICA
+      # ================================================================
+
+      - id: page4
+
+        lambda: |-
+
+          it.printf(
+            0,
+            0,
+            id(icon_font),
+            TextAlign::TOP_LEFT,
+            "󱊥"
+          );
+
+
+          it.printf(
+            it.get_width() / 2,
+            0,
+            id(arial),
+            TextAlign::TOP_CENTER,
+            "BATTERIA"
+          );
+
+
+          // ----------------------------------------------------------
+          // Carica
+          // ----------------------------------------------------------
+
+          it.printf(
+            0,
+            it.get_height() - 37,
+            id(arial),
+            TextAlign::BASELINE_LEFT,
+            "Carica"
+          );
+
+          it.printf(
+            it.get_width(),
+            it.get_height() - 37,
+            id(arial),
+            TextAlign::BASELINE_RIGHT,
+            "%.0f W",
+            id(display_battery_charge_power).state
+          );
+
+
+          // ----------------------------------------------------------
+          // Energia caricata
+          // ----------------------------------------------------------
+
+          it.printf(
+            0,
+            it.get_height() - 25,
+            id(arial),
+            TextAlign::BASELINE_LEFT,
+            "Caricata"
+          );
+
+          it.printf(
+            it.get_width(),
+            it.get_height() - 25,
+            id(arial),
+            TextAlign::BASELINE_RIGHT,
+            "%.2f kWh",
+            id(display_battery_charge_energy).state
+          );
+
+
+          // ----------------------------------------------------------
+          // Scarica
+          // ----------------------------------------------------------
+
+          it.printf(
+            0,
+            it.get_height() - 13,
+            id(arial),
+            TextAlign::BASELINE_LEFT,
+            "Scarica"
+          );
+
+          it.printf(
+            it.get_width(),
+            it.get_height() - 13,
+            id(arial),
+            TextAlign::BASELINE_RIGHT,
+            "%.0f W",
+            id(display_battery_discharge_power).state
+          );
+
+
+          // ----------------------------------------------------------
+          // Energia scaricata
+          // ----------------------------------------------------------
+
+          it.printf(
+            0,
+            it.get_height() - 1,
+            id(arial),
+            TextAlign::BASELINE_LEFT,
+            "Scaricata"
+          );
+
+          it.printf(
+            it.get_width(),
+            it.get_height() - 1,
+            id(arial),
+            TextAlign::BASELINE_RIGHT,
+            "%.2f kWh",
+            id(display_battery_discharge_energy).state
+          );
+
+      # ================================================================
+      # PAGE 5
+      # PARAMETRI BATTERIA
+      # ================================================================
+
+      - id: page5
+
+        lambda: |-
+
+          it.printf(
+            0,
+            0,
+            id(icon_font),
+            TextAlign::TOP_LEFT,
+            "󱊦"
+          );
+
+
+          it.printf(
+            it.get_width() / 2,
+            0,
+            id(arial),
+            TextAlign::TOP_CENTER,
+            "SETTAGGI"
+          );
+
+
+          // ----------------------------------------------------------
+          // Bulk
+          // ----------------------------------------------------------
+
+          it.printf(
+            0,
+            it.get_height() - 37,
+            id(arial),
+            TextAlign::BASELINE_LEFT,
+            "Bulk"
+          );
+
+          it.printf(
+            it.get_width(),
+            it.get_height() - 37,
+            id(arial),
+            TextAlign::BASELINE_RIGHT,
+            "%s V",
+            id(display_bulk_voltage).state.c_str()
+          );
+
+
+          // ----------------------------------------------------------
+          // Float
+          // ----------------------------------------------------------
+
+          it.printf(
+            0,
+            it.get_height() - 25,
+            id(arial),
+            TextAlign::BASELINE_LEFT,
+            "Float"
+          );
+
+          it.printf(
+            it.get_width(),
+            it.get_height() - 25,
+            id(arial),
+            TextAlign::BASELINE_RIGHT,
+            "%s V",
+            id(display_float_voltage).state.c_str()
+          );
+
+
+          // ----------------------------------------------------------
+          // Low
+          // ----------------------------------------------------------
+
+          it.printf(
+            0,
+            it.get_height() - 13,
+            id(arial),
+            TextAlign::BASELINE_LEFT,
+            "Low"
+          );
+
+          it.printf(
+            it.get_width(),
+            it.get_height() - 13,
+            id(arial),
+            TextAlign::BASELINE_RIGHT,
+            "%s V",
+            id(display_discharge_voltage).state.c_str()
+          );
+
+
+          // ----------------------------------------------------------
+          // Alert
+          // ----------------------------------------------------------
+
+          it.printf(
+            0,
+            it.get_height() - 1,
+            id(arial),
+            TextAlign::BASELINE_LEFT,
+            "Alert"
+          );
+
+          it.printf(
+            it.get_width(),
+            it.get_height() - 1,
+            id(arial),
+            TextAlign::BASELINE_RIGHT,
+            "%s V",
+            id(display_low_warning_voltage).state.c_str()
+          );
+
+      # ================================================================
+      # PAGE 6
+      # GRAFICO TENSIONE BATTERIA
+      #
+      # Sensore:
+      # sensor.heltec_pi30_pi30_battery_voltage
+      #
+      # Range:
+      # 23 - 29 V
+      # ================================================================
+
+      - id: page6
+
+        lambda: |-
+
+          it.graph(
+            0,
+            0,
+            id(battery_voltage_graph)
+          );
+
+
+# =====================================================================
+# FONT
+# =====================================================================
+
+font:
+
+  - file: "arial.ttf"
+
+    id: arial
+
+    size: 12
+
+    glyphs:
+
+      [
+        '&',
+        '@',
+        '!',
+        ',',
+        '.',
+        '"',
+        '%',
+        '(',
+        ')',
+        '+',
+        '-',
+        '_',
+        ':',
+        '°',
+
+        '0',
+        '1',
+        '2',
+        '3',
+        '4',
+        '5',
+        '6',
+        '7',
+        '8',
+        '9',
+
+        'A',
+        'B',
+        'C',
+        'D',
+        'E',
+        'F',
+        'G',
+        'H',
+        'I',
+        'J',
+        'K',
+        'L',
+        'M',
+        'N',
+        'O',
+        'P',
+        'Q',
+        'R',
+        'S',
+        'T',
+        'U',
+        'V',
+        'W',
+        'X',
+        'Y',
+        'Z',
+
+        ' ',
+
+        'a',
+        'b',
+        'c',
+        'd',
+        'e',
+        'f',
+        'g',
+        'h',
+        'i',
+        'j',
+        'k',
+        'l',
+        'm',
+        'n',
+        'o',
+        'p',
+        'q',
+        'r',
+        's',
+        't',
+        'u',
+        'v',
+        'w',
+        'x',
+        'y',
+        'z',
+
+        'à',
+        'è',
+        'é',
+        'ì',
+        'ò',
+        'ù',
+
+        '/',
+        '#'
+      ]
+
+
+  - file: "materialdesignicons-webfont.ttf"
+
+    id: icon_font
+
+    size: 17
+
+    glyphs:
+
+      [
+        '󰖩',
+        '󰽕',
+        '󰖙',
+        '󰥛',
+        '󰟑',
+        '󱊣',
+        '󱊥',        
+        '󱊦',
+        '󰌪'
+      ]
